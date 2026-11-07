@@ -1,5 +1,8 @@
 # Vision
 
+*Symbolon*: the Greek token broken in two, whose halves prove an agreement by fitting together. Here the agreement is
+the OpenAPI document, and every implementation of it is a half that must still fit.
+
 Where this project is going, and why. [CONCEPT.md](CONCEPT.md) describes how the prototype works today,
 [PETSTORE.md](PETSTORE.md) walks through the sample, and the [README](README.md) covers the mechanics.
 
