@@ -55,7 +55,7 @@ of someone else's API, nobody on the team knows the behaviour well enough to wri
 ## 4. Only Petstore has been through it
 
 The sample spec is the only one the generator has run on. Constructs real specs use heavily are skipped with
-`SYM002`: inline object schemas, `allOf`, `oneOf` without a discriminator, `default` responses, and operations with
+`MM002`: inline object schemas, `allOf`, `oneOf` without a discriminator, `default` responses, and operations with
 more than six responses (`Results<...>` takes at most six). Large public specs, the obvious targets for gap 1's fakes,
 use all of these.
 
