@@ -1,4 +1,4 @@
-# Resultful.OpenApi (prototype)
+# Symbolon (prototype)
 
 Spec-first ASP.NET Core on .NET 10. The OpenAPI document is the source of truth. A Roslyn source generator reads it at
 build time and writes the server's contracts, and the hand-written code returns Resultful types. A regression suite and
@@ -6,11 +6,16 @@ a round-trip check against the spec decide whether the server is done.
 
 This is a prototype. Nothing here is packed or published, and the `Resultful` package is unchanged.
 
+**The name.** A *symbolon* was a Greek token broken in two, one half for each party, and the halves fitting together
+proved the agreement. Here the OpenAPI document is the agreement. The server, the client, the fake and the tests each
+hold a piece of it, and the checks prove the pieces still fit. Symbolon uses [Resultful](../../README.md) for its result
+types, and is otherwise its own project; it lives under Resultful's repository until it moves out.
+
 **[VISION.md](VISION.md)** is where this is going and why, and **[GAPS.md](GAPS.md)** is where the prototype falls short of it. **[PETSTORE.md](PETSTORE.md)** walks through the sample end to end. **[CONCEPT.md](CONCEPT.md)** sets out the idea and its three uses: the workflow for spec-first services, a testing
 framework that checks any API against its spec, and a generated fake server. This README covers the mechanics.
 
 ```
-petstore.yaml ──[Resultful.OpenApi.Generator]──▶ DTOs, response unions, IPetsHandlers, validation, MapPetStore()
+petstore.yaml ──[Symbolon.Generator]──▶ DTOs, response unions, IPetsHandlers, validation, MapPetStore()
      ▲                                                         │
      │                                          PetsHandlers.cs (hand-written, Resultful)
      │                                                         ▼
@@ -20,32 +25,32 @@ petstore.yaml ──[Resultful.OpenApi.Generator]──▶ DTOs, response unions
 ## Run it
 
 ```bash
-cd prototypes/openapi
-dotnet test Resultful.OpenApi.slnx
+cd prototypes/symbolon
+dotnet test Symbolon.slnx
 ```
 
 The generated files are written to `obj/generated/` in the Contract and Sample projects, so you can read them.
 
 | Project | What it is |
 |---|---|
-| `Resultful.OpenApi.Generator` | The `IIncrementalGenerator` (netstandard2.0). It reads the spec with Microsoft.OpenApi 3.x, which ships inside the analyzer. |
-| `Resultful.OpenApi.Sample.Contract` | `petstore.yaml` and the generated **Contract** part: types, response unions, `IPetsHandlers`, validation, `ValidatingPetsHandlers` and `PetStoreClient`. What a consumer or a test suite references. |
-| `Resultful.OpenApi.Sample` | The service: the generated **Server** part (endpoints, OpenAPI configuration), `Program.cs`, the hand-written handlers (`PetsHandlers.cs`), and storage in SQLite through EF Core (`PetRepository.cs`, `Data/`). |
-| `Resultful.OpenApi.Fakes` | The runtime for generated fakes: `Scenario` (expected calls, in code or JSON), `ScenarioRunner` (order, request expectations, verification), `FakeCall`. Referencing it turns on the generated fake and scenario builder. |
-| `Resultful.OpenApi.Scaffold` | The command-line tool. `scaffold` writes the server side of a spec as owned ASP.NET source (controllers or Minimal API), with a reference implementation, and never overwrites without `--force`. `scaffold regress <spec> <url>` runs the regression suite generated from a spec against any HTTP API. |
-| `Resultful.OpenApi.Testing` | The regression engine: from an OpenAPI 3.1 document (JSON), it generates examples, valid requests, boundary values, one invalid request per constraint, and workflows from `links`, and checks every response. It needs only System.Text.Json. |
-| `Resultful.OpenApi.Testing.Tests` | The engine on small specs, against a stub. |
-| `Resultful.OpenApi.Sample.Scaffolded` | The Pet Store as the scaffolder writes it, untouched; tested to match the spec before anyone edits it. |
-| `Resultful.OpenApi.Sample.Fake` | A fake PetStore server: the generated **Server** part over the generated fakes, in a ten-line `Program.cs`. `dotnet run`, then script the default fake with `PUT /__fake/{operationId}`, or stand up an isolated fake from a scenario with `POST /__fake/sessions`. |
-| `Resultful.OpenApi.Sample.Tests` | `ContractSuite` (one suite against `IPetsHandlers`, run in-process and over HTTP, with outcome coverage), `ClientConformanceTests` (the client catching a server that breaks the spec), `RegressionSuite` (raw HTTP and JSON), `SpecRegressionTests` (the suite generated from the spec, against the service, the scaffold and the fake, as a differential, and with a fault per check), `HandlerTests`, `SpecDriftTests` (the round trip). Every server test starts from a named seed scenario. |
-| `Resultful.OpenApi.Generator.Tests` | The generator on small specs: what it emits, and the diagnostics for what it doesn't support. |
+| `Symbolon.Generator` | The `IIncrementalGenerator` (netstandard2.0). It reads the spec with Microsoft.OpenApi 3.x, which ships inside the analyzer. |
+| `Symbolon.Sample.Contract` | `petstore.yaml` and the generated **Contract** part: types, response unions, `IPetsHandlers`, validation, `ValidatingPetsHandlers` and `PetStoreClient`. What a consumer or a test suite references. |
+| `Symbolon.Sample` | The service: the generated **Server** part (endpoints, OpenAPI configuration), `Program.cs`, the hand-written handlers (`PetsHandlers.cs`), and storage in SQLite through EF Core (`PetRepository.cs`, `Data/`). |
+| `Symbolon.Fakes` | The runtime for generated fakes: `Scenario` (expected calls, in code or JSON), `ScenarioRunner` (order, request expectations, verification), `FakeCall`. Referencing it turns on the generated fake and scenario builder. |
+| `Symbolon.Cli` | The `symbolon` command. `symbolon scaffold` writes the server side of a spec as owned ASP.NET source (controllers or Minimal API), with a reference implementation, and never overwrites without `--force`. `symbolon regress <spec> <url>` runs the regression suite generated from a spec against any HTTP API. |
+| `Symbolon.Testing` | The regression engine: from an OpenAPI 3.1 document (JSON), it generates examples, valid requests, boundary values, one invalid request per constraint, and workflows from `links`, and checks every response. It needs only System.Text.Json. |
+| `Symbolon.Testing.Tests` | The engine on small specs, against a stub. |
+| `Symbolon.Sample.Scaffolded` | The Pet Store as the scaffolder writes it, untouched; tested to match the spec before anyone edits it. |
+| `Symbolon.Sample.Fake` | A fake PetStore server: the generated **Server** part over the generated fakes, in a ten-line `Program.cs`. `dotnet run`, then script the default fake with `PUT /__fake/{operationId}`, or stand up an isolated fake from a scenario with `POST /__fake/sessions`. |
+| `Symbolon.Sample.Tests` | `ContractSuite` (one suite against `IPetsHandlers`, run in-process and over HTTP, with outcome coverage), `ClientConformanceTests` (the client catching a server that breaks the spec), `RegressionSuite` (raw HTTP and JSON), `SpecRegressionTests` (the suite generated from the spec, against the service, the scaffold and the fake, as a differential, and with a fault per check), `HandlerTests`, `SpecDriftTests` (the round trip). Every server test starts from a named seed scenario. |
+| `Symbolon.Generator.Tests` | The generator on small specs: what it emits, and the diagnostics for what it doesn't support. |
 
 ## What the spec becomes
 
 A spec is enabled with an item in the project file:
 
 ```xml
-<AdditionalFiles Include="petstore.yaml" ResultfulOpenApi="true" ResultfulNamespace="PetStore.Api" ResultfulApiName="PetStore" />
+<AdditionalFiles Include="petstore.yaml" Symbolon="true" SymbolonNamespace="PetStore.Api" SymbolonApiName="PetStore" />
 ```
 
 Each operation's handler signature comes from its responses:
@@ -76,17 +81,17 @@ Each operation's handler signature comes from its responses:
   schema. It is scripted with `On{Operation}(...)`, `Respond(operationId, status, json)` or a scenario of expected
   calls (`PetStoreScenario`, or JSON), and records calls. `Add{Api}FakeHub`, `Use{Api}FakeHub` and
   `Map{Api}FakeControl` host it as a fake server with isolated sessions (the `FakeServer` part). The fake is generated
-  only when the project references `Resultful.OpenApi.Fakes`.
+  only when the project references `Symbolon.Fakes`.
 - **The fluent fake** (`fake.Given...`, `fake.Should()...`) and **`PetStoreFakeServer`**, a real server on a free port
   for tests. See CONCEPT.md.
-- **Parts.** `ResultfulParts="Contract"` generates what callers need; `"Server"` generates the endpoints and OpenAPI
+- **Parts.** `SymbolonParts="Contract"` generates what callers need; `"Server"` generates the endpoints and OpenAPI
   configuration; `"Server,FakeServer"` adds fake hosting (the hub, the control API and `PetStoreFakeServer`); `"Regression"` (with
-  `Resultful.OpenApi.Testing`) generates `PetStoreRegression`, the spec as JSON and the regression suite built from it;
+  `Symbolon.Testing`) generates `PetStoreRegression`, the spec as JSON and the regression suite built from it;
   `"Verify"` generates
   nothing and checks the project's hand-written controllers and Map calls against the spec: operations, responses and
-  names (`RAPI010`–`RAPI015`, for controllers and Minimal API alike), parameter and body binding (`RAPI016`–`RAPI020`),
-  model shapes and constraints against the schemas (`RAPI021`–`RAPI022`; the generated types match by construction), and
-  parameter constraints (`RAPI023`). The
+  names (`SYM010`–`SYM015`, for controllers and Minimal API alike), parameter and body binding (`SYM016`–`SYM020`),
+  model shapes and constraints against the schemas (`SYM021`–`SYM022`; the generated types match by construction), and
+  parameter constraints (`SYM023`). The
   default is `Contract,Server`. Separate parts with commas: the value reaches the generator through an `.editorconfig`,
   where `;` starts a comment.
 - **Schemas** become `record`s with `required` init properties. String enums become enums with
@@ -185,7 +190,7 @@ and expected the wrong way round and almost none of its assertions chain.
 
 ## Not supported yet
 
-The generator reports these as `RAPI002` warnings and skips them; it never emits code that doesn't compile:
+The generator reports these as `SYM002` warnings and skips them; it never emits code that doesn't compile:
 
 - inline object schemas (use a component `$ref`)
 - `allOf`

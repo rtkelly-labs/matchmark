@@ -8,10 +8,10 @@ run; long ones are abridged, marked with `...`.
 ## Run it
 
 ```bash
-cd prototypes/openapi
-dotnet test Resultful.OpenApi.slnx                           # 104 tests: generator and sample
-dotnet run --project Resultful.OpenApi.Sample                # the real service (SQLite, Demo seed)
-dotnet run --project Resultful.OpenApi.Sample.Fake           # the fake server, http://localhost:5080
+cd prototypes/symbolon
+dotnet test Symbolon.slnx                           # 104 tests: generator and sample
+dotnet run --project Symbolon.Sample                # the real service (SQLite, Demo seed)
+dotnet run --project Symbolon.Sample.Fake           # the fake server, http://localhost:5080
 ```
 
 Generated code is written to `obj/generated/` in the Contract, Sample and Fake projects, so it can be read like any
@@ -20,19 +20,19 @@ other source. Nothing generated is checked in.
 ## The pieces
 
 ```
-Resultful.OpenApi.Sample.Contract/petstore.yaml        the spec: the one source of truth
+Symbolon.Sample.Contract/petstore.yaml        the spec: the one source of truth
           │
-          ├─▶ Resultful.OpenApi.Sample.Contract        Contract part: types, unions, IPetsHandlers, validation,
+          ├─▶ Symbolon.Sample.Contract        Contract part: types, unions, IPetsHandlers, validation,
           │                                            PetStoreClient, PetStoreFake, PetStoreScenario
-          ├─▶ Resultful.OpenApi.Sample                 Server part: endpoints, OpenAPI configuration
+          ├─▶ Symbolon.Sample                 Server part: endpoints, OpenAPI configuration
           │                                            + PetsHandlers.cs (hand-written), SQLite through EF Core
-          └─▶ Resultful.OpenApi.Sample.Fake            Server and FakeServer parts over the fake: no hand-written behaviour
+          └─▶ Symbolon.Sample.Fake            Server and FakeServer parts over the fake: no hand-written behaviour
                                                        (a ten-line Program.cs)
 
-Resultful.OpenApi.Sample.Tests                         everything above, checked against the spec
+Symbolon.Sample.Tests                         everything above, checked against the spec
 ```
 
-The same spec file feeds three projects. Each takes the parts it needs (`ResultfulParts` on its `AdditionalFiles` item),
+The same spec file feeds three projects. Each takes the parts it needs (`SymbolonParts` on its `AdditionalFiles` item),
 so the projects can't disagree about the API.
 
 ## 1. The spec
@@ -72,7 +72,7 @@ The schemas cover the cases a generator usually gets wrong:
 
 ## 2. The spec becomes a contract
 
-`Resultful.OpenApi.Sample.Contract` holds nothing but the spec and a project file. The build generates the contract:
+`Symbolon.Sample.Contract` holds nothing but the spec and a project file. The build generates the contract:
 
 **One interface for the whole API.** Every method's return type lists what the spec documents:
 
@@ -128,7 +128,7 @@ public abstract record PetDetails;
 
 ## 3. The service implements the contract
 
-`Resultful.OpenApi.Sample/PetsHandlers.cs` is the only hand-written API code. It never touches HTTP: it returns
+`Symbolon.Sample/PetsHandlers.cs` is the only hand-written API code. It never touches HTTP: it returns
 Resultful values, and the types won't let it return anything the spec doesn't document.
 
 ```cs
@@ -348,7 +348,7 @@ step 5 (listPets → 200): times must be at least 1
 
 ### The fake server, from any language
 
-`dotnet run --project Resultful.OpenApi.Sample.Fake` starts the fake server. The rest of this section is a session
+`dotnet run --project Symbolon.Sample.Fake` starts the fake server. The rest of this section is a session
 recorded with curl against the real process, with `type` and `traceId` trimmed from the problems.
 
 It answers with the spec's example, and with the real validation:
@@ -400,12 +400,12 @@ would.
 ## 7. Owning it: the scaffolded server
 
 The fake is the spec turned into behaviour you never touch. Scaffolding goes the other way: the spec turned into
-ordinary ASP.NET source you own. `Resultful.OpenApi.Sample.Scaffolded` is the Pet Store as the scaffolder writes it,
+ordinary ASP.NET source you own. `Symbolon.Sample.Scaffolded` is the Pet Store as the scaffolder writes it,
 untouched. Only its project file was written by hand.
 
 ```
-$ dotnet run --project Resultful.OpenApi.Scaffold -- Resultful.OpenApi.Sample.Contract/petstore.yaml \
-    Resultful.OpenApi.Sample.Scaffolded --api PetStore --contract-namespace PetStore.Api --namespace PetStore.Scaffolded
+$ dotnet run --project Symbolon.Cli -- scaffold Symbolon.Sample.Contract/petstore.yaml \
+    Symbolon.Sample.Scaffolded --api PetStore --contract-namespace PetStore.Api --namespace PetStore.Scaffolded
   wrote    Controllers/PetsController.cs
   wrote    PetStoreConventions.cs
   wrote    PetStoreOpenApi.cs
@@ -443,41 +443,41 @@ TODO, so the service runs and conforms before anyone writes a line:
 Pet answer = new Pet { Id = 1, Name = "Rex", Tag = "good-dog", Status = PetStatus.Available, Details = new Dog { GoodBoy = true } };
 ```
 
-The scaffolded project also opts in to compile-time verification (`ResultfulParts="Verify"` on the spec). From now
+The scaffolded project also opts in to compile-time verification (`SymbolonParts="Verify"` on the spec). From now
 on, its build checks the hand-written controllers against the spec. This is what breaking the controller five ways at
 once does:
 
 ```
-petstore.yaml(1,1): error RAPI010: The spec's operation 'deletePet' (DELETE /pets/{petId}) has no endpoint: add a controller action or Map call for it
-PetsController.cs(82,6): error RAPI011: PetsController.Health (GET /health) is not in the spec: document it, or leave it out of the OpenAPI description (...)
-PetsController.cs(51,6): error RAPI012: PetsController.GetPet (GET /pets/{petId}): the spec documents a 404 response, but the endpoint declares none; declare it with [ProducesResponseType]
-PetsController.cs(51,6): error RAPI013: PetsController.GetPet (GET /pets/{petId}): the endpoint declares a 410 response, which the spec does not document
-PetsController.cs(51,6): error RAPI014: PetsController.GetPet (GET /pets/{petId}) is named 'fetchPet'; name it 'getPet', the spec's operationId, which the OpenAPI description uses
-PetsController.cs(63,6): error RAPI015: PetsController.UpsertPet (PUT /pets/{petId}): the route parameter is '{id}', the spec calls it '{petId}'
+petstore.yaml(1,1): error SYM010: The spec's operation 'deletePet' (DELETE /pets/{petId}) has no endpoint: add a controller action or Map call for it
+PetsController.cs(82,6): error SYM011: PetsController.Health (GET /health) is not in the spec: document it, or leave it out of the OpenAPI description (...)
+PetsController.cs(51,6): error SYM012: PetsController.GetPet (GET /pets/{petId}): the spec documents a 404 response, but the endpoint declares none; declare it with [ProducesResponseType]
+PetsController.cs(51,6): error SYM013: PetsController.GetPet (GET /pets/{petId}): the endpoint declares a 410 response, which the spec does not document
+PetsController.cs(51,6): error SYM014: PetsController.GetPet (GET /pets/{petId}) is named 'fetchPet'; name it 'getPet', the spec's operationId, which the OpenAPI description uses
+PetsController.cs(63,6): error SYM015: PetsController.UpsertPet (PUT /pets/{petId}): the route parameter is '{id}', the spec calls it '{petId}'
 ```
 
 It checks the wiring too, using ASP.NET Core's own binding rules. Binding `limit` as a non-nullable `int`,
 `petId` as `int` rather than `long`, the body from the query, and an undocumented `hard` flag gives:
 
 ```
-PetsController.cs(23,6): error RAPI019: PetsController.ListPets (GET /pets): 'limit' is optional in the spec, but binding it as a non-nullable int with no default makes it required; make it int? or give it a default
-PetsController.cs(51,6): error RAPI018: PetsController.GetPet (GET /pets/{petId}): 'petId' is bound as int; the spec says long
-PetsController.cs(32,6): error RAPI020: PetsController.CreatePet (POST /pets): the spec has a NewPet request body, but the endpoint binds none
-PetsController.cs(32,6): error RAPI017: PetsController.CreatePet (POST /pets): 'body' binds query value 'body', which the spec doesn't document
-PetsController.cs(83,6): error RAPI017: PetsController.DeletePet (DELETE /pets/{petId}): 'hard' binds query value 'hard', which the spec doesn't document
+PetsController.cs(23,6): error SYM019: PetsController.ListPets (GET /pets): 'limit' is optional in the spec, but binding it as a non-nullable int with no default makes it required; make it int? or give it a default
+PetsController.cs(51,6): error SYM018: PetsController.GetPet (GET /pets/{petId}): 'petId' is bound as int; the spec says long
+PetsController.cs(32,6): error SYM020: PetsController.CreatePet (POST /pets): the spec has a NewPet request body, but the endpoint binds none
+PetsController.cs(32,6): error SYM017: PetsController.CreatePet (POST /pets): 'body' binds query value 'body', which the spec doesn't document
+PetsController.cs(83,6): error SYM017: PetsController.DeletePet (DELETE /pets/{petId}): 'hard' binds query value 'hard', which the spec doesn't document
 ```
 
 The models are checked as well. The scaffold uses the generated `Pet` and `NewPet`, so they match the spec by
 construction and nothing is reported. A team that swaps in its own types gets them compared with the schemas, as
-System.Text.Json would write them. A hand-written `PetDto` that matches is noted (`RAPI021`, info), and one that drifts
-is reported at each JSON path where it differs (`RAPI022`):
+System.Text.Json would write them. A hand-written `PetDto` that matches is noted (`SYM021`, info), and one that drifts
+is reported at each JSON path where it differs (`SYM022`):
 
 ```
-PetsController.cs(32,6): info RAPI021: PetsController.CreatePet (POST /pets): the 201 response is PetDto, which matches the schema Pet today; use the generated types so it stays consistent by construction
-PetsController.cs(51,6): error RAPI022: PetsController.GetPet (GET /pets/{petId}): the 200 response is NewPet, which differs from the schema Pet: id is missing
-PetsController.cs(23,6): error RAPI022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].id is int (integer/int32); the schema says integer/int64
-PetsController.cs(23,6): error RAPI022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].details is discriminated by 'type'; the schema uses 'kind'
-PetsController.cs(63,6): error RAPI022: PetsController.UpsertPet (PUT /pets/{petId}): the request body is PetDto, which differs from the schema NewPet: id (Id) is not in the schema
+PetsController.cs(32,6): info SYM021: PetsController.CreatePet (POST /pets): the 201 response is PetDto, which matches the schema Pet today; use the generated types so it stays consistent by construction
+PetsController.cs(51,6): error SYM022: PetsController.GetPet (GET /pets/{petId}): the 200 response is NewPet, which differs from the schema Pet: id is missing
+PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].id is int (integer/int32); the schema says integer/int64
+PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].details is discriminated by 'type'; the schema uses 'kind'
+PetsController.cs(63,6): error SYM022: PetsController.UpsertPet (PUT /pets/{petId}): the request body is PetDto, which differs from the schema NewPet: id (Id) is not in the schema
 ```
 
 So a team can own and edit every line of the HTTP layer, and the compiler still guarantees it covers the spec, and
@@ -501,7 +501,7 @@ What the tests show about the untouched scaffold:
 The test project generates one more part from the same spec:
 
 ```xml
-<AdditionalFiles Include="../Resultful.OpenApi.Sample.Contract/petstore.yaml" ... ResultfulParts="Regression" />
+<AdditionalFiles Include="../Symbolon.Sample.Contract/petstore.yaml" ... SymbolonParts="Regression" />
 ```
 
 That gives `PetStoreRegression.Suite`: 90 cases and one workflow, built from nothing but the spec. Here is some of
@@ -557,7 +557,7 @@ It runs against every Pet Store there is:
 And any other API, from the command line:
 
 ```console
-$ dotnet run --project Resultful.OpenApi.Scaffold -- regress petstore.yaml http://localhost:5080 --no-workflows
+$ dotnet run --project Symbolon.Cli -- regress petstore.yaml http://localhost:5080 --no-workflows
 ```
 
 ## What tells you what
@@ -574,30 +574,30 @@ $ dotnet run --project Resultful.OpenApi.Scaffold -- regress petstore.yaml http:
 | make the fake answer something the API never would | refused when scripted; `FakeTests` checks every outcome it can give |
 | call the fake in the wrong order or with the wrong request | the scenario, or `Should().HaveReceivedInOrder(...)` |
 | write a scenario file with a typo | `PetStoreFake.Check`, when it's loaded |
-| remove, rename or misdeclare a hand-written endpoint | the build (`RAPI010`–`RAPI015`), in projects that opt in to `Verify` |
-| bind a parameter or body from the wrong place, with the wrong type, or as required when it's optional | the build (`RAPI016`–`RAPI020`) |
-| use a model whose JSON or constraints differ from the schema, or a hand-written one where the generated one would do | the build (`RAPI022`, and `RAPI021` as info) |
-| constrain a parameter differently from the spec (`[Range]`, `[MaxLength]`) | the build (`RAPI023`) |
+| remove, rename or misdeclare a hand-written endpoint | the build (`SYM010`–`SYM015`), in projects that opt in to `Verify` |
+| bind a parameter or body from the wrong place, with the wrong type, or as required when it's optional | the build (`SYM016`–`SYM020`) |
+| use a model whose JSON or constraints differ from the schema, or a hand-written one where the generated one would do | the build (`SYM022`, and `SYM021` as info) |
+| constrain a parameter differently from the spec (`[Range]`, `[MaxLength]`) | the build (`SYM023`) |
 | scaffold a server whose shape drifts from the spec | `ScaffoldedServerTests` (the round trip, on controllers) |
-| answer any request in a way the spec doesn't allow, reject a valid one, accept an invalid one, or lose what was written | the generated regression suite (`SpecRegressionTests`, or `scaffold regress` against any server) |
+| answer any request in a way the spec doesn't allow, reject a valid one, accept an invalid one, or lose what was written | the generated regression suite (`SpecRegressionTests`, or `symbolon regress` against any server) |
 | make the controllers answer differently from the generated endpoints | the suite's differential run |
 
 ## Where things are
 
 | File | What it is |
 |:--|:--|
-| `Resultful.OpenApi.Sample.Contract/petstore.yaml` | the spec |
-| `Resultful.OpenApi.Sample/PetsHandlers.cs` | the only hand-written API logic |
-| `Resultful.OpenApi.Sample/PetRepository.cs`, `Data/` | SQLite through EF Core, and the seed scenarios |
-| `Resultful.OpenApi.Sample/Program.cs` | the service's host |
-| `Resultful.OpenApi.Sample.Fake/Program.cs` | the fake server's host |
-| `Resultful.OpenApi.Sample.Tests/ContractSuite.cs` | one suite, two targets, outcome coverage |
-| `Resultful.OpenApi.Sample.Tests/RegressionSuite.cs` | the black-box suite |
-| `Resultful.OpenApi.Sample.Tests/SpecDriftTests.cs` | the round trip |
-| `Resultful.OpenApi.Sample.Tests/ClientConformanceTests.cs` | the client catching a non-conforming server |
-| `Resultful.OpenApi.Sample.Tests/FakeTests.cs` | the fake, in-process and as a server |
-| `Resultful.OpenApi.Sample.Tests/FluentFakeServerTests.cs` | `Given` and `Should()` on a real port |
-| `Resultful.OpenApi.Sample.Tests/ScenarioTests.cs`, `Scenarios/` | scenarios in code and JSON, and sessions |
-| `Resultful.OpenApi.Sample.Scaffolded/` | the scaffolder's untouched output: controllers and a reference implementation |
-| `Resultful.OpenApi.Scaffold/Program.cs` | the scaffolding tool |
-| `Resultful.OpenApi.Generator/Emitter.cs`, `EmitterScaffold.cs` | everything above that wasn't written by hand |
+| `Symbolon.Sample.Contract/petstore.yaml` | the spec |
+| `Symbolon.Sample/PetsHandlers.cs` | the only hand-written API logic |
+| `Symbolon.Sample/PetRepository.cs`, `Data/` | SQLite through EF Core, and the seed scenarios |
+| `Symbolon.Sample/Program.cs` | the service's host |
+| `Symbolon.Sample.Fake/Program.cs` | the fake server's host |
+| `Symbolon.Sample.Tests/ContractSuite.cs` | one suite, two targets, outcome coverage |
+| `Symbolon.Sample.Tests/RegressionSuite.cs` | the black-box suite |
+| `Symbolon.Sample.Tests/SpecDriftTests.cs` | the round trip |
+| `Symbolon.Sample.Tests/ClientConformanceTests.cs` | the client catching a non-conforming server |
+| `Symbolon.Sample.Tests/FakeTests.cs` | the fake, in-process and as a server |
+| `Symbolon.Sample.Tests/FluentFakeServerTests.cs` | `Given` and `Should()` on a real port |
+| `Symbolon.Sample.Tests/ScenarioTests.cs`, `Scenarios/` | scenarios in code and JSON, and sessions |
+| `Symbolon.Sample.Scaffolded/` | the scaffolder's untouched output: controllers and a reference implementation |
+| `Symbolon.Cli/Program.cs` | the scaffolding tool |
+| `Symbolon.Generator/Emitter.cs`, `EmitterScaffold.cs` | everything above that wasn't written by hand |
