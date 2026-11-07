@@ -55,7 +55,7 @@ tests can include or leave out.
 
 The production workflow's server side comes in two forms, from the same spec:
 
-| | Generated (`SymbolonParts="Server"`) | Scaffolded (`Symbolon.Cli`) |
+| | Generated (`MatchmarkParts="Server"`) | Scaffolded (`Matchmark.Cli`) |
 |:--|:--|:--|
 | What you get | Minimal API endpoints, rebuilt on every compile | `[ApiController]` controllers (or Minimal API endpoints) as ordinary source, written once |
 | Who owns it | the generator; never edited | the team; edited like any other code |
@@ -74,8 +74,8 @@ The scaffold is also the way off the generator. Run it once, delete the `Server`
 that still implements a generated contract.
 
 ```bash
-dotnet run --project Symbolon.Cli -- scaffold Symbolon.Sample.Contract/petstore.yaml \
-  Symbolon.Sample.Scaffolded --api PetStore --contract-namespace PetStore.Api --namespace PetStore.Scaffolded
+dotnet run --project Matchmark.Cli -- scaffold Matchmark.Sample.Contract/petstore.yaml \
+  Matchmark.Sample.Scaffolded --api PetStore --contract-namespace PetStore.Api --namespace PetStore.Scaffolded
 ```
 
 What it writes, for the Pet Store:
@@ -102,7 +102,7 @@ What it writes, for the Pet Store:
   - MVC accepting `application/json` only, as documented
 - `PetStoreOpenApi.cs` and `Program.cs`.
 
-The untouched output is committed as `Symbolon.Sample.Scaffolded`, and tested:
+The untouched output is committed as `Matchmark.Sample.Scaffolded`, and tested:
 - **Faithful.** `ScaffoldTests` checks the scaffolder still writes exactly those files, byte for byte.
 - **Conforms before anyone edits it.** `ScaffoldedServerTests` checks the scaffolded controllers' OpenAPI document
   against the spec with no excused differences, sends every operation's reference answer through the
@@ -112,18 +112,18 @@ The untouched output is committed as `Symbolon.Sample.Scaffolded`, and tested:
 
 #### Verified at compile time
 
-Owned code can drift from the spec, so the generator checks it. Add the spec with `SymbolonParts="Verify"` to a
+Owned code can drift from the spec, so the generator checks it. Add the spec with `MatchmarkParts="Verify"` to a
 project with hand-written endpoints, and the build compares every controller action and Minimal API `Map` call against
 the spec's operations. Nothing is generated; it only reports:
 
 | Diagnostic | Meaning |
 |:--|:--|
-| `SYM010` | an operation in the spec has no endpoint |
-| `SYM011` | an endpoint is not in the spec and not left out of the OpenAPI description |
-| `SYM012` | the spec documents a response the endpoint doesn't declare |
-| `SYM013` | the endpoint declares a response the spec doesn't document |
-| `SYM014` | the endpoint's name isn't the spec's `operationId` |
-| `SYM015` | a route parameter is named differently from the spec |
+| `MM010` | an operation in the spec has no endpoint |
+| `MM011` | an endpoint is not in the spec and not left out of the OpenAPI description |
+| `MM012` | the spec documents a response the endpoint doesn't declare |
+| `MM013` | the endpoint declares a response the spec doesn't document |
+| `MM014` | the endpoint's name isn't the spec's `operationId` |
+| `MM015` | a route parameter is named differently from the spec |
 
 What it understands:
 - **Routes:** controller `[Route]` prefixes, `[controller]` and `[action]` tokens, route constraints, and literal
@@ -154,20 +154,20 @@ attribute wins. Otherwise:
 
 | Diagnostic | Meaning |
 |:--|:--|
-| `SYM016` | a spec parameter (path, query or header) isn't bound; the message gives the parameter to add |
-| `SYM017` | the endpoint binds a route, query or header value the spec doesn't document |
-| `SYM018` | a parameter is bound with a different type from the spec (`int` for an `int64` id) |
-| `SYM019` | an optional parameter is bound as a non-nullable value with no default. A Minimal API then answers 400 when it's left out, and MVC silently binds `0` |
-| `SYM020` | the spec's body isn't bound, or one is bound that the spec doesn't have. It also catches the classic MVC mistake: without `[ApiController]`, a complex parameter binds from the form and query, not the body |
+| `MM016` | a spec parameter (path, query or header) isn't bound; the message gives the parameter to add |
+| `MM017` | the endpoint binds a route, query or header value the spec doesn't document |
+| `MM018` | a parameter is bound with a different type from the spec (`int` for an `int64` id) |
+| `MM019` | an optional parameter is bound as a non-nullable value with no default. A Minimal API then answers 400 when it's left out, and MVC silently binds `0` |
+| `MM020` | the spec's body isn't bound, or one is bound that the spec doesn't have. It also catches the classic MVC mistake: without `[ApiController]`, a complex parameter binds from the form and query, not the body |
 
 Wiring the scaffolded controller wrong four ways gives:
 
 ```
-PetsController.cs(23,6): error SYM019: PetsController.ListPets (GET /pets): 'limit' is optional in the spec, but binding it as a non-nullable int with no default makes it required; make it int? or give it a default
-PetsController.cs(51,6): error SYM018: PetsController.GetPet (GET /pets/{petId}): 'petId' is bound as int; the spec says long
-PetsController.cs(32,6): error SYM020: PetsController.CreatePet (POST /pets): the spec has a NewPet request body, but the endpoint binds none
-PetsController.cs(32,6): error SYM017: PetsController.CreatePet (POST /pets): 'body' binds query value 'body', which the spec doesn't document
-PetsController.cs(83,6): error SYM017: PetsController.DeletePet (DELETE /pets/{petId}): 'hard' binds query value 'hard', which the spec doesn't document
+PetsController.cs(23,6): error MM019: PetsController.ListPets (GET /pets): 'limit' is optional in the spec, but binding it as a non-nullable int with no default makes it required; make it int? or give it a default
+PetsController.cs(51,6): error MM018: PetsController.GetPet (GET /pets/{petId}): 'petId' is bound as int; the spec says long
+PetsController.cs(32,6): error MM020: PetsController.CreatePet (POST /pets): the spec has a NewPet request body, but the endpoint binds none
+PetsController.cs(32,6): error MM017: PetsController.CreatePet (POST /pets): 'body' binds query value 'body', which the spec doesn't document
+PetsController.cs(83,6): error MM017: PetsController.DeletePet (DELETE /pets/{petId}): 'hard' binds query value 'hard', which the spec doesn't document
 ```
 
 And it checks that the models match the spec. The endpoint side reads the body parameter's type and each declared
@@ -187,22 +187,22 @@ a type). Types are compared by full identity, not by simple name:
 
 | Diagnostic | Meaning |
 |:--|:--|
-| `SYM021` (info) | a hand-written type matches the schema today. It is consistent, but not by construction, so the next spec change can silently break it |
-| `SYM022` | a type differs from its schema; one diagnostic per difference, at its JSON path |
+| `MM021` (info) | a hand-written type matches the schema today. It is consistent, but not by construction, so the next spec change can silently break it |
+| `MM022` | a type differs from its schema; one diagnostic per difference, at its JSON path |
 
 Returning a hand-written `PetDto`, `NewPet` where the spec says `Pet`, a drifted `List<DriftedPet>`, and a body on a
 204 gives (abridged):
 
 ```
-PetsController.cs(32,6): info SYM021: PetsController.CreatePet (POST /pets): the 201 response is PetDto, which matches the schema Pet today; use the generated types so it stays consistent by construction
-PetsController.cs(51,6): error SYM022: PetsController.GetPet (GET /pets/{petId}): the 200 response is NewPet, which differs from the schema Pet: id is missing
-PetsController.cs(51,6): error SYM022: PetsController.GetPet (GET /pets/{petId}): the 200 response is NewPet, which differs from the schema Pet: status is missing
-PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].id is int (integer/int32); the schema says integer/int64
-PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].status is an enum written as a number; the schema has string values (add [JsonConverter(typeof(JsonStringEnumConverter<PlainStatus>))])
-PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].details is discriminated by 'type'; the schema uses 'kind'
-PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].details has no derived type for 'cat' (Cat)
-PetsController.cs(23,6): error SYM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].owner (Owner) is not in the schema
-PetsController.cs(83,6): error SYM022: PetsController.DeletePet (DELETE /pets/{petId}): the 204 response is Pet, but the spec's 204 response has no body
+PetsController.cs(32,6): info MM021: PetsController.CreatePet (POST /pets): the 201 response is PetDto, which matches the schema Pet today; use the generated types so it stays consistent by construction
+PetsController.cs(51,6): error MM022: PetsController.GetPet (GET /pets/{petId}): the 200 response is NewPet, which differs from the schema Pet: id is missing
+PetsController.cs(51,6): error MM022: PetsController.GetPet (GET /pets/{petId}): the 200 response is NewPet, which differs from the schema Pet: status is missing
+PetsController.cs(23,6): error MM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].id is int (integer/int32); the schema says integer/int64
+PetsController.cs(23,6): error MM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].status is an enum written as a number; the schema has string values (add [JsonConverter(typeof(JsonStringEnumConverter<PlainStatus>))])
+PetsController.cs(23,6): error MM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].details is discriminated by 'type'; the schema uses 'kind'
+PetsController.cs(23,6): error MM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].details has no derived type for 'cat' (Cat)
+PetsController.cs(23,6): error MM022: PetsController.ListPets (GET /pets): the 200 response is List<DriftedPet>, which differs from the schema Pet[]: [].owner (Owner) is not in the schema
+PetsController.cs(83,6): error MM022: PetsController.DeletePet (DELETE /pets/{petId}): the 204 response is Pet, but the spec's 204 response has no body
 ```
 
 Minimal API bodies and responses are compared the same way.
@@ -217,19 +217,19 @@ the constructor parameter, not the property, so the document doesn't carry it. T
 
 | Diagnostic | Meaning |
 |:--|:--|
-| `SYM023` | a bound parameter's constraints differ from its schema's (`[Range(0, 1000)] int? limit` where the spec says `minimum: 1, maximum: 100`) |
+| `MM023` | a bound parameter's constraints differ from its schema's (`[Range(0, 1000)] int? limit` where the spec says `minimum: 1, maximum: 100`) |
 
 
 The scaffolded Pet Store opts in, so its clean build is itself the proof that every operation is covered. Breaking its
 controller five ways at once gives:
 
 ```
-petstore.yaml(1,1): error SYM010: The spec's operation 'deletePet' (DELETE /pets/{petId}) has no endpoint: add a controller action or Map call for it
-PetsController.cs(82,6): error SYM011: PetsController.Health (GET /health) is not in the spec: document it, or leave it out of the OpenAPI description (...)
-PetsController.cs(51,6): error SYM012: PetsController.GetPet (GET /pets/{petId}): the spec documents a 404 response, but the endpoint declares none; declare it with [ProducesResponseType]
-PetsController.cs(51,6): error SYM013: PetsController.GetPet (GET /pets/{petId}): the endpoint declares a 410 response, which the spec does not document
-PetsController.cs(51,6): error SYM014: PetsController.GetPet (GET /pets/{petId}) is named 'fetchPet'; name it 'getPet', the spec's operationId, which the OpenAPI description uses
-PetsController.cs(63,6): error SYM015: PetsController.UpsertPet (PUT /pets/{petId}): the route parameter is '{id}', the spec calls it '{petId}'
+petstore.yaml(1,1): error MM010: The spec's operation 'deletePet' (DELETE /pets/{petId}) has no endpoint: add a controller action or Map call for it
+PetsController.cs(82,6): error MM011: PetsController.Health (GET /health) is not in the spec: document it, or leave it out of the OpenAPI description (...)
+PetsController.cs(51,6): error MM012: PetsController.GetPet (GET /pets/{petId}): the spec documents a 404 response, but the endpoint declares none; declare it with [ProducesResponseType]
+PetsController.cs(51,6): error MM013: PetsController.GetPet (GET /pets/{petId}): the endpoint declares a 410 response, which the spec does not document
+PetsController.cs(51,6): error MM014: PetsController.GetPet (GET /pets/{petId}) is named 'fetchPet'; name it 'getPet', the spec's operationId, which the OpenAPI description uses
+PetsController.cs(63,6): error MM015: PetsController.UpsertPet (PUT /pets/{petId}): the route parameter is '{id}', the spec calls it '{petId}'
 ```
 
 This is the round-trip test's guarantee moved from test time to compile time, for owned code. The round-trip test still
@@ -245,7 +245,7 @@ on a project's implicit usings; generated and scaffolded files now declare their
 1. **The spec changes first,** in a pull request reviewed like code. Response codes, errors and constraints are API
    decisions made in the spec, not side effects of an implementation.
 2. **The build generates both halves.** The Contract part goes into a package that consumers reference. The Server part
-   goes into the service: `SymbolonParts="Contract"` or `"Server"` on the spec's `AdditionalFiles` item.
+   goes into the service: `MatchmarkParts="Contract"` or `"Server"` on the spec's `AdditionalFiles` item.
 3. **The compiler finds the work.** A new error response is a new case in a union, and every handler and consumer that
    matches on it fails to build until it handles it. The `upsertPet` 409 went in this way.
 4. **CI gates,** all implemented here:
@@ -285,8 +285,8 @@ change:
 #### The generated regression suite: the spec tests itself
 
 The hand-written suites test what someone thought to test. The **Regression** part makes the spec write its own suite:
-`SymbolonParts="Regression"` in a test project generates `PetStoreRegression`, which holds the spec as OpenAPI 3.1 JSON
-and the suite built from it by `Symbolon.Testing`. That runtime needs only System.Text.Json and an
+`MatchmarkParts="Regression"` in a test project generates `PetStoreRegression`, which holds the spec as OpenAPI 3.1 JSON
+and the suite built from it by `Matchmark.Testing`. That runtime needs only System.Text.Json and an
 `HttpClient`, so the suite runs against any server, in any language. The suite is rebuilt with the spec, so it can't
 drift from it.
 
@@ -337,7 +337,7 @@ which the Pet Store's spec doesn't declare.
   differently: status, then body, ignoring the trace id. The generated Minimal API endpoints and the scaffolded
   `[ApiController]` controllers, both over the real handlers and an empty database, answer every request identically.
   So the two directions from one spec behave alike at the edges, not just in the description.
-- **From the command line, against anything:** `symbolon regress petstore.yaml http://localhost:5080` prints the report
+- **From the command line, against anything:** `matchmark regress petstore.yaml http://localhost:5080` prints the report
   and exits 0 or 1. `RegressCommandTests` runs it against a small hand-written Todo API with a bug planted (it accepts a
   21-character title). The run fails, naming exactly that case. Fixed, it passes.
 
@@ -360,7 +360,7 @@ which the Pet Store's spec doesn't declare.
    `type`. They are now completed by MVC's `ProblemDetailsFactory`, and the answers are identical.
 
 **How to adopt it,** smallest step first:
-1. Run `symbolon regress` against an existing API, or generate the contract into its test project and run its tests
+1. Run `matchmark regress` against an existing API, or generate the contract into its test project and run its tests
    through the client. The service is untouched.
 2. Add the round-trip test if the service already publishes an OpenAPI document.
 3. Generate the server part for new endpoints.
@@ -377,9 +377,9 @@ which the Pet Store's spec doesn't declare.
       .OnGetPet(id => GetPetError.NotFound(new ProblemDetails { Title = $"No pet {id}" }));
   ```
 
-- **Behind the generated endpoints,** it's a fake server: `Symbolon.Sample.Fake` is a `Program.cs` of about
+- **Behind the generated endpoints,** it's a fake server: `Matchmark.Sample.Fake` is a `Program.cs` of about
   ten lines with no database and no handlers.
-  - **Run it:** `dotnet run --project Symbolon.Sample.Fake`, on http://localhost:5080.
+  - **Run it:** `dotnet run --project Matchmark.Sample.Fake`, on http://localhost:5080.
   - **Script it from any language:**
     - `PUT /__fake/{operationId}` with `{"status": 404, "body": {...}}` sets the next answers
     - `GET /__fake/calls` lists the calls received
@@ -392,7 +392,7 @@ Default answers come from the spec:
 - otherwise a sample built to pass the schema: required properties, lengths and ranges, the first enum value, and the
   first `oneOf` member with its discriminator
 
-If a required string has a pattern the generated sample doesn't match, the generator asks for an example (`SYM005`)
+If a required string has a pattern the generated sample doesn't match, the generator asks for an example (`MM005`)
 rather than serve an invalid body.
 
 #### The fluent fake server
@@ -452,7 +452,7 @@ What it takes from the C# fake-server libraries, and what it adds:
 
 To check how a consumer uses the API, give the fake a scenario: the calls it expects, what each request must contain,
 and the documented answer to give. A scenario can be written two ways, both producing the same model (`Scenario` in
-`Symbolon.Fakes`):
+`Matchmark.Fakes`):
 
 ```cs
 // In code: a generated, typed builder with one method per operation.
