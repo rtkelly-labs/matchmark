@@ -29,4 +29,51 @@ public sealed class EmittedCodeTests
         sources.Where(s => !s.Text.Contains("#nullable enable", StringComparison.Ordinal)).Select(s => s.Hint).Should().BeEmpty();
         warnings.Select(w => w.ToString()).Should().BeEmpty();
     }
+
+    /// <summary>
+    /// No generated switch dispatches on a tuple. Roslyn checks a tuple switch's patterns in time cubic in its arms: the
+    /// fake's (operation, status) switches took most of an hour to compile for GitHub's spec. Each switch dispatches on
+    /// one value, and nests where it needs a second.
+    /// </summary>
+    [Test]
+    public void No_generated_switch_dispatches_on_a_tuple()
+    {
+        var examined = 0;
+        var fakes = 0;
+        var tuples = new List<string>();
+        foreach (var sample in DerivedEvidenceTests.Samples().Where(s => s != "split"))
+        {
+            var (spec, overlays) = DerivedEvidenceTests.Paths(sample);
+            var api = char.ToUpperInvariant(sample[0]) + sample[1..];
+            var (_, _, sources, _) = GeneratedServer.BuildWithWarnings(api, spec, overlays, string.Empty, withRules: true);
+            fakes += sources.Count(s => s.Hint.EndsWith(".Fake.g.cs", StringComparison.Ordinal));
+            foreach (var (hint, text) in sources)
+            {
+                foreach (var node in Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(text).GetRoot().DescendantNodes())
+                {
+                    var governing = node switch
+                    {
+                        Microsoft.CodeAnalysis.CSharp.Syntax.SwitchStatementSyntax s => s.Expression,
+                        Microsoft.CodeAnalysis.CSharp.Syntax.SwitchExpressionSyntax s => s.GoverningExpression,
+                        _ => null,
+                    };
+                    if (governing is null)
+                    {
+                        continue;
+                    }
+
+                    examined++;
+                    if (governing is Microsoft.CodeAnalysis.CSharp.Syntax.TupleExpressionSyntax)
+                    {
+                        tuples.Add($"{sample}: {hint}: switch ({governing})");
+                    }
+                }
+            }
+        }
+
+        TestContext.Out.WriteLine($"examined {examined} switches, {fakes} fakes");
+        fakes.Should().BeGreaterThan(0, "the fake, which dispatches on an operation and a status, was examined");
+        examined.Should().BeGreaterThan(fakes);
+        tuples.Should().BeEmpty();
+    }
 }
