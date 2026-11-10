@@ -15,12 +15,12 @@ namespace Matchmark.Generator.Tests;
 [TestFixture]
 public sealed class IncrementalityTests
 {
-    private static string Spec(string petsSummary = "all the pets") => $$"""
+    private static string Spec(string petsSummary = "all the pets", int petsLimit = 100) => $$"""
         openapi: 3.1.1
         info: { title: T, version: 1.0.0 }
         paths:
           /pets:
-            get: { operationId: listPets, tags: [pets], summary: '{{petsSummary}}', responses: { '204': { description: none } } }
+            get: { operationId: listPets, tags: [pets], summary: '{{petsSummary}}', parameters: [{ name: limit, in: query, schema: { type: integer, maximum: {{petsLimit}} } }], responses: { '204': { description: none } } }
           /stores:
             get: { operationId: listStores, tags: [stores], responses: { '204': { description: none } } }
         """;
@@ -86,23 +86,42 @@ public sealed class IncrementalityTests
         Reused(outputs["T.Endpoints.Stores.g.cs"]).Should().BeTrue();
     }
 
-    [TestCase("every pet")]
-    [TestCase("all the pets, and more")]
-    public void An_edit_to_one_tag_re_emits_only_that_tag(string summary)
+    [TestCase(50)]
+    [TestCase(1000)]
+    public void An_edit_to_one_tag_re_emits_only_that_tag(int limit)
     {
         var before = new Text("/specs/t.yaml", Spec());
         var compilation = CSharpCompilation.Create("T");
         var driver = Driver(before).RunGenerators(compilation);
-        driver = driver.ReplaceAdditionalText(before, new Text("/specs/t.yaml", Spec(summary))).RunGenerators(compilation);
+        driver = driver.ReplaceAdditionalText(before, new Text("/specs/t.yaml", Spec(petsLimit: limit))).RunGenerators(compilation);
 
         Reasons(driver, TrackingNames.TagSlices).Count(r => r == IncrementalStepRunReason.Modified).Should().Be(1);
         Reasons(driver, TrackingNames.TagSlices).Count(r => Reused(r)).Should().Be(1);
+        Reasons(driver, TrackingNames.TagShapes).Count(r => r == IncrementalStepRunReason.Modified).Should().Be(1, "the endpoint checks the new maximum");
         var outputs = Outputs(driver);
         Reused(outputs["T.Endpoints.Stores.g.cs"]).Should().BeTrue();
         Reused(outputs["T.Endpoints.Pets.g.cs"]).Should().BeFalse();
     }
 
-    private static string WithComponents(int storeNameLength = 50) => $$"""
+    [TestCase("every pet")]
+    [TestCase("all the pets, and more")]
+    public void An_edit_to_a_tag_its_endpoints_don_t_read_stops_at_its_shape(string summary)
+    {
+        var before = new Text("/specs/t.yaml", Spec());
+        var compilation = CSharpCompilation.Create("T");
+        var driver = Driver(before).RunGenerators(compilation);
+        // A summary is documentation: the pets slice changes, and is read again to the same shape.
+        driver = driver.ReplaceAdditionalText(before, new Text("/specs/t.yaml", Spec(summary))).RunGenerators(compilation);
+
+        Reasons(driver, TrackingNames.TagSlices).Count(r => r == IncrementalStepRunReason.Modified).Should().Be(1);
+        Reasons(driver, TrackingNames.TagShapes).Should().HaveCount(2).And.OnlyContain(r => Reused(r))
+            .And.Contain(IncrementalStepRunReason.Unchanged, "the pets slice was read again, to the same shape");
+        var outputs = Outputs(driver);
+        Reused(outputs["T.Endpoints.Stores.g.cs"]).Should().BeTrue();
+        Reused(outputs["T.Endpoints.Pets.g.cs"]).Should().BeTrue("its shape is equal");
+    }
+
+    private static string WithComponents(int storeNameLength = 50, string storeCity = "") => $$"""
         openapi: 3.1.1
         info: { title: T, version: 1.0.0 }
         paths:
@@ -113,23 +132,28 @@ public sealed class IncrementalityTests
         components:
           schemas:
             Pet: { type: object, properties: { name: { type: string } } }
-            Store: { type: object, properties: { name: { type: string, maxLength: {{storeNameLength}} } } }
+            Store: { type: object, properties: { name: { type: string, maxLength: {{storeNameLength}} }{{storeCity}} } }
         """;
 
-    [Test]
-    public void An_edit_to_a_component_re_emits_only_the_tags_that_use_it()
+    [TestCase(80, "")]
+    [TestCase(50, ", city: { type: string }")]
+    public void An_edit_to_a_component_reaches_only_the_tags_that_use_it_and_re_emits_the_models_not_their_endpoints(int nameLength, string city)
     {
-        // Each tag's slice holds the components it reaches (model.md: a TagShape and the component names it uses).
+        // Each tag's slice holds the components it reaches (model.md: a TagShape and the component names it uses), and
+        // its endpoints read a component by name alone: a bound or a property added changes the models, not the endpoints.
         var before = new Text("/specs/t.yaml", WithComponents());
         var compilation = CSharpCompilation.Create("T");
         var driver = Driver(before).RunGenerators(compilation);
-        driver = driver.ReplaceAdditionalText(before, new Text("/specs/t.yaml", WithComponents(storeNameLength: 80))).RunGenerators(compilation);
+        driver = driver.ReplaceAdditionalText(before, new Text("/specs/t.yaml", WithComponents(nameLength, city))).RunGenerators(compilation);
 
         Reasons(driver, TrackingNames.TagSlices).Should().HaveCount(2);
         Reasons(driver, TrackingNames.TagSlices).Count(r => r == IncrementalStepRunReason.Modified).Should().Be(1, "only stores reaches Store");
+        Reasons(driver, TrackingNames.TagShapes).Should().HaveCount(2).And.OnlyContain(r => Reused(r))
+            .And.Contain(IncrementalStepRunReason.Unchanged, "the stores slice was read again, to the same shape");
         var outputs = Outputs(driver);
         Reused(outputs["T.Endpoints.Pets.g.cs"]).Should().BeTrue("pets doesn't use Store");
-        Reused(outputs["T.Endpoints.Stores.g.cs"]).Should().BeFalse();
+        Reused(outputs["T.Endpoints.Stores.g.cs"]).Should().BeTrue("the stores endpoints read Store by name alone");
+        outputs.Should().ContainKey("T.Models.g.cs").WhoseValue.Should().Be(IncrementalStepRunReason.Modified, "Store's model changed");
     }
 
     private const string Handlers = """

@@ -271,7 +271,8 @@ flowchart LR
 - A small semantic model of operations, outcomes, schemas and traits, at the latest version of each format.
 - Parsing as its own incremental step, with output per tag, so one edit doesn't regenerate everything.
 - ✓ The model tested directly (`ApiModel`), independent of any output; ✓ the emitter split by output (its largest file
-  863 lines, from 4,334 in one). Outputs as functions of the model, and the engine on it (question 1), are next
+  863 lines, from 4,334 in one); ✓ each tag's endpoints a pure function of its shape. The other outputs as functions of
+  the model, and the engine on it (question 1), are next
   ([docs/reference/model.md](docs/reference/model.md)).
 - ✓ Per-object checks on .NET's own validation layer, through a generated resolver, the default (Q45): attributes on
   models, Matchmark.Validation, rules as `IValidatableObject`, endpoint parameters. Moving the client and retiring

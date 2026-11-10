@@ -241,7 +241,7 @@ namespace Matchmark.Generator
         /// </summary>
         private void EmitClientChecks(CodeWriter w, Operation operation)
         {
-            var bounds = ParameterChecks(operation).ToList();
+            var bounds = ParameterChecks(operation.Parameters.Select(ParameterShapeOf), ValidationClass).ToList();
             var dependencies = operation.Dependencies.Count > 0 && _hasRules;
             var body = operation.Body is { Validated: true };
             if (bounds.Count == 0 && !dependencies && !body)

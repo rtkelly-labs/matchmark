@@ -24,6 +24,9 @@ namespace Matchmark.Generator
 
         private const string ValidationSchema = "HttpValidationProblemDetails";
 
+        /// <summary>One of the framework's problem types (ProblemDetails, HttpValidationProblemDetails), by the name it's written as.</summary>
+        internal static bool IsWellKnownType(string type) => WellKnownSchemas.ContainsValue(type);
+
         private const string FormMedia = "application/x-www-form-urlencoded";
 
         /// <summary>The framework types the schemas map onto: none when the contract owns its problem types.</summary>

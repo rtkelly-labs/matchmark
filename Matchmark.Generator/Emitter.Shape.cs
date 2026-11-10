@@ -12,17 +12,7 @@ namespace Matchmark.Generator
         public ApiShape Shape(string path)
         {
             CollectSchemas();
-            var operations = CollectOperations().Select(o => new OperationShape(
-                o.Id,
-                o.Method,
-                o.Path,
-                o.Tag,
-                o.Parameters.Select(p => new ParameterShape(
-                    p.Attribute.Substring(4), p.Name, p.Type.TrimEnd('?'), !p.Type.EndsWith("?", StringComparison.Ordinal),
-                    (p.Schema is null ? Array.Empty<(string, string)>() : Constraints.Of(p.Schema)).Select(c => new ConstraintShape(c.Item1, c.Item2)).ToEquatable())).ToEquatable(),
-                o.Body?.Type,
-                o.Body?.Schema is { } body ? SchemaShapeOf(body) : null,
-                o.Successes.Concat(o.Errors).Select(r => new ResponseShape(r.Status, r.Schema is { } s ? SchemaShapeOf(s) : null)).ToEquatable()));
+            var operations = CollectOperations().Select(OperationShapeOf);
 
             // The framework's problem types stand for their schemas whether or not the spec defines them as components.
             var wellKnown = WellKnownSchemas.Keys.Where(id => !_schemas.ContainsKey(id)).Select(id => new ComponentShape(
@@ -30,6 +20,42 @@ namespace Matchmark.Generator
             var components = _schemas.Select(s => ComponentShapeOf(s.Key, s.Value)).Concat(wellKnown).OrderBy(c => c.Id, StringComparer.Ordinal);
             return new ApiShape(_apiName, _namespace, path, operations.ToEquatable(), components.ToEquatable());
         }
+
+        /// <summary>A tag's slice of the spec as the shape its endpoints are emitted from, filed under <paramref name="name"/>.</summary>
+        public TagShape TagShape(string name)
+        {
+            CollectSchemas();
+            return new TagShape(_apiName, _namespace, name, CollectOperations().Select(OperationShapeOf).ToEquatable());
+        }
+
+        private OperationShape OperationShapeOf(Operation o) => new(
+            o.Id,
+            o.Method,
+            o.Path,
+            o.Tag,
+            o.Parameters.Select(ParameterShapeOf).ToEquatable(),
+            o.Body is { } body ? new BodyShape(body.Type, body.MediaType, o.RequiredBody, body.Enum, SchemaShapeOf(body.Schema), BoundsOf(body.Schema)) : null,
+            o.Successes.Select(r => r.Outcome(true, r.Schema is { } s ? SchemaShapeOf(s) : null))
+                .Concat(o.Errors.Select(r => r.Outcome(false, r.Schema is { } s ? SchemaShapeOf(s) : null))).ToEquatable(),
+            o.Dependencies.ToEquatable(),
+            o.ResponseHeaders.ToEquatable());
+
+        /// <summary>A parameter as its shape: what Verify compares, and what an endpoint, a client or a controller reads and checks.</summary>
+        private ParameterShape ParameterShapeOf(Param p) => new(
+            p.Attribute.Substring(4),
+            p.Name,
+            p.Type.TrimEnd('?'),
+            !p.Type.EndsWith("?", StringComparison.Ordinal),
+            (p.Schema is null ? Array.Empty<(string, string)>() : Constraints.Of(p.Schema)).Select(c => new ConstraintShape(c.Item1, c.Item2)).ToEquatable(),
+            p.Identifier,
+            p.Enum,
+            p.Deep,
+            p.Whole,
+            _schemas.Keys.Select(Naming.Pascal).Contains(p.Type.TrimEnd('?')),
+            p.Schema is { } schema ? BoundsOf(schema) : null);
+
+        private static BoundsShape BoundsOf(IOpenApiSchema schema)
+            => new(schema.Minimum, schema.Maximum, schema.MinLength, schema.MaxLength, schema.Pattern, schema.Format);
 
         private static SchemaShape SchemaShapeOf(IOpenApiSchema schema)
         {

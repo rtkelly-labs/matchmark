@@ -51,8 +51,9 @@ from the components alone.
 *What it decides:* whether generated servers gain per-tag registration methods (an addition to the generated API, not a
 removal), and whether the remaining outputs move onto the model as functions of it before or with this.
 *Built meanwhile:* the addition and the incremental step for endpoints: `Map{Api}{Tag}()` per tag, with `Map{Api}()`
-calling them, each tag's endpoints generated from its own slice of the spec into `{Api}.Endpoints.{Tag}.g.cs`, so an
-edit to one tag's operations regenerates only that file (`IncrementalityTests`, from Roslyn's step tracking; slices now keep only the
-components their tag reaches, so an edit to a component re-emits only the tags that use it). What's left to decide is whether the other per-operation outputs (handlers, client, fake) split the
+calling them, each tag's endpoints generated from its own equatable shape (`TagShape`, read from its slice of the spec) into
+`{Api}.Endpoints.{Tag}.g.cs`, so an edit to one tag's operations regenerates only that file (`IncrementalityTests`, from
+Roslyn's step tracking; slices keep only the components their tag reaches, so an edit to a component reaches only the
+tags that use it, and an edit their endpoints don't read stops at the shape). What's left to decide is whether the other per-operation outputs (handlers, client, fake) split the
 same way, which splits their classes into per-tag partials.
 *Assumption until then:* endpoints are per tag; the other outputs are one emission per spec.

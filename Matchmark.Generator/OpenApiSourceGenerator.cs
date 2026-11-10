@@ -77,8 +77,10 @@ namespace Matchmark.Generator
             var slices = specs.Combine(overlays).Combine(specParts)
                 .SelectMany(static (pair, ct) => Slices(Bundled(With(pair.Left.Left, pair.Left.Right), pair.Right)))
                 .WithTrackingName(TrackingNames.TagSlices);
-            context.RegisterSourceOutput(slices.Combine(references), static (spc, pair) =>
-                GenerateTag(spc, pair.Left, pair.Right.DescribesItself, pair.Right.HasFakes, pair.Right.HasRules, pair.Right.HasValidation, pair.Right.HasValidationAttributes));
+            var tags = slices.Combine(references)
+                .Select(static (pair, _) => TagShape(pair.Left, pair.Right.DescribesItself, pair.Right.HasFakes, pair.Right.HasRules, pair.Right.HasValidation, pair.Right.HasValidationAttributes))
+                .WithTrackingName(TrackingNames.TagShapes);
+            context.RegisterSourceOutput(tags, static (spc, tag) => GenerateTag(spc, tag));
 
             // C# 15 unions on a runtime without their types (.NET 10, or an early .NET 11 preview): the two the compiler
             // needs, internal, once per project that has a spec generating unions.
@@ -308,12 +310,15 @@ namespace System.Runtime.CompilerServices
 
         private static string Tag(JsonObject operation) => (operation["tags"] as JsonArray)?.FirstOrDefault()?.GetValue<string>() ?? string.Empty;
 
-        /// <summary>One tag's endpoints, from its slice: added as {Api}.Endpoints.{Tag}.g.cs; the slice's diagnostics are the whole spec's, reported once by Generate.</summary>
-        private static void GenerateTag(SourceProductionContext context, SpecInput slice, bool describesItself, bool hasFakes, bool hasRules, bool hasValidation, bool hasValidationAttributes)
+        /// <summary>
+        /// One tag's slice read into the shape its endpoints are emitted from; null when it can't be read. The slice's
+        /// diagnostics are the whole spec's, reported once by Generate.
+        /// </summary>
+        internal static TagShape? TagShape(SpecInput slice, bool describesItself, bool hasFakes, bool hasRules, bool hasValidation, bool hasValidationAttributes)
         {
             if (SpecReader.Read(slice.Content, slice.Path, out _) is not { } document)
             {
-                return;
+                return null;
             }
 
             var emitter = new Emitter(document, slice.Namespace, slice.ApiName, Location.None, describesItself, hasFakes, hasRules, slice.OwnProblems)
@@ -323,8 +328,16 @@ namespace System.Runtime.CompilerServices
                 PlainOutcomes = !slice.Resultful,
                 ClientOnNet = slice.ClientOnNet,
             };
-            var name = Naming.Pascal(string.IsNullOrEmpty(slice.SliceTag) ? slice.ApiName : slice.SliceTag!);
-            context.AddSource($"{slice.ApiName}.Endpoints.{name}.g.cs", SourceText.From(emitter.EmitTagEndpoints(), System.Text.Encoding.UTF8));
+            return emitter.TagShape(Naming.Pascal(string.IsNullOrEmpty(slice.SliceTag) ? slice.ApiName : slice.SliceTag!));
+        }
+
+        /// <summary>One tag's endpoints, from its shape alone: added as {Api}.Endpoints.{Tag}.g.cs.</summary>
+        private static void GenerateTag(SourceProductionContext context, TagShape? tag)
+        {
+            if (tag is not null)
+            {
+                context.AddSource($"{tag.ApiName}.Endpoints.{tag.Name}.g.cs", SourceText.From(Emitter.EmitTagEndpoints(tag), System.Text.Encoding.UTF8));
+            }
         }
 
         /// <summary>
@@ -515,6 +528,9 @@ namespace System.Runtime.CompilerServices
 
         /// <summary>Each tag's slice of each spec, for its endpoints (question 4).</summary>
         public const string TagSlices = "Matchmark.TagSlices";
+
+        /// <summary>Each tag's slice read into its shape: what its endpoints are emitted from, alone.</summary>
+        public const string TagShapes = "Matchmark.TagShapes";
     }
 
     internal sealed class SpecInput : IEquatable<SpecInput>
