@@ -132,5 +132,7 @@ onto the shape is the model's next step ([model.md](docs/reference/model.md#its-
   release, then a version bump in `Directory.Packages.props`.
 - **The large specs' time.** On GitHub, `LargeSpecTests` took 1h10m for GitHub's and Stripe's specs, where the rest of
   the suite took 3m19s and a whole generator run over GitHub's spec is benchmarked at 2.7 s. Which spec and which phase
-  (generating, or Roslyn compiling and analysing what it writes) is not yet measured; `large-specs.yml` logs each test's
-  duration to find out. *Status:* open. Meanwhile the large specs run on `main` and weekly, not on pull requests.
+  (generating, or Roslyn compiling and analysing what it writes) is not yet measured. Each test now records its generate
+  and compile times (`large-timings.txt`, in the run's summary), and `large-specs.yml`'s profile job traces a run into
+  a flame graph. *Status:* open. Meanwhile the large specs run on `main` and on pull requests that touch them, not as a
+  required check.

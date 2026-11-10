@@ -1,28 +1,57 @@
 name: large specs
 
-# The large public specs (GitHub's and Stripe's, fetched from upstream, not committed): the share of operations
-# generated, a number that should only rise, and that what is generated compiles with no error. Its first run on GitHub
-# took 1h10m for the two specs, against 3m19s for the whole of the rest of the suite; why is open (GAPS.md: the large
-# specs' time). So it isn't a pull request's check: it runs on main, weekly (upstream moves), and on demand. Its own
-# workflow, so that ci.yml's required checks on main never queue behind it.
+# The large public specs (GitHub's and Stripe's, copied into samples/large at a pinned upstream commit): the share of
+# operations generated, a number that should only rise, and that what is generated compiles with no error. Their first
+# runs took 1h10m for the two specs, against 3m19s for the rest of the suite (GAPS.md: the large specs' time), so this
+# isn't a required check, and has its own workflow so ci.yml's checks never queue behind it.
+#
+#   large    on main, and on a pull request that changes the copies or the test: the ledger, and where the time went.
+#   drift    weekly: whether upstream has changed a spec since its pin. It opens or updates an issue; it never fails on it.
+#   profile  on demand (a pull request labelled `profile`, or a dispatch): a CPU profile of the run, as a speedscope
+#            flame graph to open at https://www.speedscope.app, the raw .nettrace, runtime counters, and a hotspot summary.
 on:
   push:
     branches: [ main ]
+  pull_request:
+    types: [ opened, synchronize, reopened, labeled ]
+    paths:
+      - 'samples/large/**'
+      - 'Matchmark.Generator.Tests/LargeSpecTests.cs'
+      - '.github/workflows/large-specs.yml'
+      - 'eng/Hotspots.cs'
   schedule:
     - cron: '0 4 * * 1'
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Profile a spec instead of running the ledger'
+        type: choice
+        options: [ none, stripe, github, both ]
+        default: none
+      delay:
+        description: 'Minutes to wait before tracing starts'
+        type: number
+        default: 0
+      duration:
+        description: 'Minutes to trace (0: until the test ends)'
+        type: number
+        default: 0
 
 permissions:
   contents: read
 
-# A newer main supersedes a run in progress.
+# Per event (and label), so a profile, the drift check and a ledger run never cancel one another.
 concurrency:
-  group: ${{ github.workflow }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ github.event.label.name }}
   cancel-in-progress: true
 
 jobs:
   large:
     name: large specs
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+      && github.event.action != 'labeled'
+      && (github.event_name != 'workflow_dispatch' || inputs.profile == 'none')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
@@ -35,8 +64,8 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Fetch the large specs
-        run: sh samples/large/fetch.sh
+      - name: Verify the copies against their pins
+        run: dotnet run samples/large/Refresh.cs -- --verify
 
       - name: Generate and compile the large specs
         env:
@@ -53,9 +82,151 @@ jobs:
       - name: Ledger
         if: always()
         run: |
+          out=Matchmark.Generator.Tests/bin/Release/net10.0
           {
             echo '### Large specs'
             echo '```'
-            cat Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt 2>/dev/null || echo 'not run'
+            cat "$out/large-ledger.txt" 2>/dev/null || echo 'not run'
+            echo '```'
+            echo '#### Where the time went'
+            echo '```'
+            cat "$out/large-timings.txt" 2>/dev/null || echo 'not run'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  drift:
+    name: upstream drift
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.profile == 'none')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # Exit 3 is "upstream has moved": reported, never a failure. Anything else non-zero is the check itself failing.
+      - name: Compare the pins with upstream
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Large specs changed upstream
+        run: |
+          status=0
+          dotnet run samples/large/Refresh.cs -- --check > drift.md || status=$?
+          { echo '### Upstream drift'; cat drift.md; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 0 ]; then exit 0; fi
+          if [ "$status" -ne 3 ]; then exit "$status"; fi
+          echo "::warning::A large spec has changed upstream since its pin"
+          {
+            echo 'Upstream has changed a large spec since the commit `samples/large/upstream.tsv` pins.'
+            echo
+            cat drift.md
+            echo
+            echo 'To take it: `dotnet run samples/large/Refresh.cs`, then a pull request; its large-spec run shows the effect on the ledger.'
+            echo "Last checked by run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."
+          } > issue.md
+          issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
+          if [ -n "$issue" ]; then
+            gh issue edit "$issue" --body-file issue.md
+          else
+            gh issue create --title "$TITLE" --body-file issue.md
+          fi
+
+  profile:
+    name: profile ${{ matrix.spec }}
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.profile != 'none')
+      || (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'profile')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        spec: ${{ fromJSON((github.event_name == 'pull_request' || inputs.profile == 'both') && '["github","stripe"]' || format('["{0}"]', inputs.profile)) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install the diagnostics tools
+        run: |
+          dotnet tool install --global dotnet-trace --version 10.0.750501
+          dotnet tool install --global dotnet-counters --version 10.0.750501
+
+      - name: Build
+        run: |
+          dotnet run samples/large/Refresh.cs -- --verify
+          dotnet build Matchmark.Generator.Tests --configuration Release
+
+      # The test runs in a testhost process that VSTest starts; the trace and the counters attach to that process.
+      - name: Run the test under the profiler
+        env:
+          SPEC: ${{ matrix.spec }}
+          DELAY: ${{ inputs.delay || 0 }}
+          DURATION: ${{ inputs.duration || 0 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/spec" profile
+          cp "samples/large/$SPEC.json" "$RUNNER_TEMP/spec/"
+          MATCHMARK_LARGE_SPECS="$RUNNER_TEMP/spec" dotnet test Matchmark.Generator.Tests --configuration Release --no-build \
+            --filter LargeSpecTests --logger 'console;verbosity=detailed' > profile/test.log 2>&1 &
+          test_pid=$!
+          pid=
+          for _ in $(seq 120); do
+            pid=$(pgrep -f 'testhost.dll' | head -n 1 || true)
+            if [ -n "$pid" ]; then break; fi
+            sleep 1
+          done
+          if [ -z "$pid" ]; then echo "::error::no testhost process"; cat profile/test.log; exit 1; fi
+          echo "testhost is $pid"
+          dotnet-counters collect -p "$pid" --counters System.Runtime --refresh-interval 5 --format csv -o profile/counters.csv > /dev/null &
+          if [ "$DELAY" -gt 0 ]; then sleep $((DELAY * 60)); fi
+          limit=()
+          if [ "$DURATION" -gt 0 ]; then limit=(--duration "$(printf '00:%02d:%02d:00' $((DURATION / 60)) $((DURATION % 60)))"); fi
+          dotnet-trace collect -p "$pid" --profile dotnet-common,dotnet-sampled-thread-time "${limit[@]}" \
+            --format Speedscope -o "profile/$SPEC.nettrace" || echo "::warning::dotnet-trace exited $?"
+          status=0
+          wait "$test_pid" || status=$?
+          wait || true
+          tail -n 40 profile/test.log
+          exit "$status"
+
+      - name: Hotspots
+        if: always()
+        env:
+          SPEC: ${{ matrix.spec }}
+        run: |
+          {
+            echo "### Profile: $SPEC"
+            grep -h "$SPEC:" Matchmark.Generator.Tests/bin/Release/net10.0/large-timings.txt 2>/dev/null || true
+            echo
+            echo 'The flame graph is the `.speedscope.json` in this run'"'"'s artifact: open it at https://www.speedscope.app.'
+            echo
+            ls -la profile >&2
+            for f in profile/*.speedscope.json; do
+              [ -e "$f" ] || { echo 'No speedscope file was written.'; break; }
+              dotnet run eng/Hotspots.cs -- "$f" 30
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the profile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: profile-${{ matrix.spec }}
+          path: |
+            profile/
+            Matchmark.Generator.Tests/bin/Release/net10.0/large-*.txt
+          retention-days: 14
