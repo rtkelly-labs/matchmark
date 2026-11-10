@@ -10,9 +10,9 @@ using NUnit.Framework;
 namespace Matchmark.Generator.Tests;
 
 /// <summary>
-/// Large public specs (GitHub's, Stripe's), fetched rather than committed (samples/large/fetch.sh), for scale: the share
-/// of operations generated, a number that should only rise, and that what is generated compiles. Runs when
-/// MATCHMARK_LARGE_SPECS names the directory they were fetched to; otherwise it's skipped.
+/// Large public specs (GitHub's, Stripe's), copied into samples/large at pinned upstream commits (upstream.tsv), for
+/// scale: the share of operations generated, a number that should only rise, and that what is generated compiles. Runs
+/// when MATCHMARK_LARGE_SPECS names a directory of specs (samples/large); otherwise it's skipped.
 /// </summary>
 [TestFixture]
 public sealed partial class LargeSpecTests
@@ -27,7 +27,7 @@ public sealed partial class LargeSpecTests
     {
         if (!File.Exists(path))
         {
-            Assert.Ignore("Set MATCHMARK_LARGE_SPECS to a directory of specs fetched by samples/large/fetch.sh.");
+            Assert.Ignore("Set MATCHMARK_LARGE_SPECS to a directory of specs, such as samples/large.");
         }
 
         var text = File.ReadAllText(path);
@@ -39,14 +39,25 @@ public sealed partial class LargeSpecTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
         var driver = CSharpGeneratorDriver.Create([new OpenApiSourceGenerator().AsSourceGenerator()], [new Text(path, text)], optionsProvider: new Options());
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var generated, out var diagnostics);
+        var generating = clock.Elapsed;
 
         var skipped = diagnostics.Select(d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture))
             .Select(m => SkippedOperation().Match(m)).Where(m => m.Success).Select(m => m.Groups[1].Value).Distinct().Count();
+        clock.Restart();
         var errors = generated.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        var compiling = clock.Elapsed;
         var line = $"{Path.GetFileNameWithoutExtension(path)}: {operations} operations, {operations - skipped} generated ({100.0 * (operations - skipped) / operations:0.#}%), {errors.Count} compile errors";
         TestContext.Out.WriteLine(line);
         File.AppendAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "large-ledger.txt"), line + Environment.NewLine);
+        // Where the time goes, apart from the ledger (which records only what should rise): the generator's run, then
+        // binding what it wrote, with the size of what it wrote.
+        var trees = generated.SyntaxTrees.Skip(compilation.SyntaxTrees.Length).ToList();
+        var timing = $"{Path.GetFileNameWithoutExtension(path)}: generate {generating:h\\:mm\\:ss}, compile {compiling:h\\:mm\\:ss}, "
+            + $"{trees.Count} files, {trees.Sum(t => t.GetText().Lines.Count):N0} lines, {trees.Sum(t => t.Length) / 1_048_576.0:0.0} MB generated";
+        TestContext.Out.WriteLine(timing);
+        File.AppendAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "large-timings.txt"), timing + Environment.NewLine);
         // Every compile error by file and code, with one example each, so a regression shows its kind at once.
         File.WriteAllLines(Path.Combine(TestContext.CurrentContext.WorkDirectory, $"large-errors-{Path.GetFileNameWithoutExtension(path)}.txt"),
             errors.GroupBy(e => $"{Path.GetFileName(e.Location.SourceTree?.FilePath)} {e.Id}").OrderByDescending(g => g.Count())
