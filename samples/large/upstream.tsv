@@ -1,0 +1,5 @@
+# The large public specs, copied here at a pinned upstream commit so every run reads the same bytes.
+# Refresh.cs checks them (--verify), reports upstream changes (--check), and moves the pin (no flag). Don't edit by hand.
+# name	repository	branch	path	commit	sha256
+github	github/rest-api-description	main	descriptions/api.github.com/api.github.com.json	e40b86bac851ca5121cd3b3e6ca96ab01e22633f	c84d410fece34c354330d3c350bc0779fab5a0e5caf27aa4c3f7bb42605d1d16
+stripe	stripe/openapi	master	openapi/spec3.json	bcfd59f49dcac84a84d63d304c62793dff6e5916	7cff4cc46d0654101a36a3302f7544640f5f73e4f3cad6f264f0e23c19fa1776

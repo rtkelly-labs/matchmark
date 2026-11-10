@@ -16,7 +16,7 @@ public static class Program
     public static void Main(string[] args) => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 }
 
-/// <summary>The specs benchmarked: the Pet Store always, GitHub's and Stripe's when samples/large holds them.</summary>
+/// <summary>The specs benchmarked: the Pet Store always, GitHub's and Stripe's from their pinned copies in samples/large.</summary>
 public static class Specs
 {
     public static readonly string Root = Path.GetFullPath(Path.Combine(Here(), ".."));

@@ -37,8 +37,9 @@ The Arazzo files are run by the regression engine: every workflow in the corpus 
 and the engine. The Orders overlay carries one example of each kind of invariant from
 [COMPLETENESS.md](../COMPLETENESS.md), and the Bookings overlay the invariants its generated server enforces.
 Every sample COMPLETENESS.md proposed is in the corpus.
-Large public specs (GitHub, Stripe) are fetched, not committed (`samples/large/fetch.sh`), and run for scale by
-`LargeSpecTests` when `MATCHMARK_LARGE_SPECS` names where they were fetched to. Their ledger (November 2026):
+Large public specs (GitHub, Stripe) are copied into `samples/large` at pinned upstream commits
+(`upstream.tsv`, with their licences in `NOTICE.md`), and run for scale by `LargeSpecTests` when `MATCHMARK_LARGE_SPECS`
+names that directory. Their ledger (November 2026):
 
 ```
 github: 1272 operations, 1256 generated (98.7%), 0 compile errors
