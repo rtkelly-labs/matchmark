@@ -27,30 +27,33 @@ namespace Matchmark.Generator
         /// </summary>
         public bool SplitByTag { get; set; }
 
-        /// <summary>One tag's endpoints, from a slice of the spec holding only its operations: the partial class's Map{Api}{Tag}.</summary>
-        internal string EmitTagEndpoints()
+        /// <summary>
+        /// One tag's endpoints, from its shape alone: the partial class's Map{Api}{Tag}. A pure function of the shape, so
+        /// Roslyn skips it when an edit leaves the shape equal.
+        /// </summary>
+        internal static string EmitTagEndpoints(TagShape shape)
         {
-            CollectSchemas();
-            var operations = CollectOperations();
-            var w = new CodeWriter(_namespace);
+            var w = new CodeWriter(shape.Namespace);
             w.Usings(EndpointUsings);
-            w.Open($"public static partial class {_apiName}Endpoints");
-            foreach (var tag in operations.GroupBy(o => Naming.Pascal(string.IsNullOrEmpty(o.Tag) ? "Default" : o.Tag)))
+            w.Open($"public static partial class {shape.ApiName}Endpoints");
+            foreach (var tag in shape.Operations.GroupBy(o => TagName(o.Tag)))
             {
-                EmitTag(w, tag.Key, tag);
+                EmitTag(w, shape.ApiName, tag.Key, tag);
             }
 
             w.Close();
             return w.ToString();
         }
 
-        private void EmitTag(CodeWriter w, string tag, IEnumerable<Operation> operations)
+        private static string TagName(string tag) => Naming.Pascal(string.IsNullOrEmpty(tag) ? "Default" : tag);
+
+        private static void EmitTag(CodeWriter w, string apiName, string tag, IEnumerable<OperationShape> operations)
         {
             w.Line($"/// <summary>Maps the operations tagged {tag} onto their handler interface, which must be registered in DI.</summary>");
-            w.Open($"public static IEndpointRouteBuilder Map{_apiName}{tag}(this IEndpointRouteBuilder app)");
+            w.Open($"public static IEndpointRouteBuilder Map{apiName}{tag}(this IEndpointRouteBuilder app)");
             foreach (var operation in operations)
             {
-                EmitEndpoint(w, operation);
+                EmitEndpoint(w, apiName, operation);
             }
 
             w.Line("return app;");
@@ -94,7 +97,7 @@ namespace Matchmark.Generator
             w.Line();
 
             // Each tag maps its own operations (question 4): Map{Api} maps them all, and a host can map one tag alone.
-            var tags = operations.GroupBy(o => Naming.Pascal(string.IsNullOrEmpty(o.Tag) ? "Default" : o.Tag)).ToList();
+            var tags = operations.GroupBy(o => TagName(o.Tag)).ToList();
             foreach (var tag in tags)
             {
                 w.Line($"Map{_apiName}{tag.Key}(app);");
@@ -107,7 +110,7 @@ namespace Matchmark.Generator
             {
                 foreach (var tag in tags)
                 {
-                    EmitTag(w, tag.Key, tag);
+                    EmitTag(w, _apiName, tag.Key, tag.Select(OperationShapeOf));
                 }
             }
 
@@ -159,10 +162,13 @@ private static (string Key, string Message)? BindingError(Exception exception) =
     _ => null,
 };";
 
-        private void EmitEndpoint(CodeWriter w, Operation operation)
+        private static void EmitEndpoint(CodeWriter w, string apiName, OperationShape operation)
         {
+            var validation = apiName + "Validation";
+            var successes = operation.Successes;
+            var errors = operation.Errors;
             var args = operation.Parameters.Where(p => !p.Deep)
-                .Select(p => p.Enum ? $"[{p.Attribute}(Name = {Naming.Literal(p.Name)})] string? __text_{p.Identifier.TrimStart('@')}" : $"[{p.Attribute}(Name = {Naming.Literal(p.Name)})] {p.Type} {p.Identifier}")
+                .Select(p => p.Enum ? $"[{p.Attribute}(Name = {Naming.Literal(p.Name)})] string? __text_{p.Identifier.TrimStart('@')}" : $"[{p.Attribute}(Name = {Naming.Literal(p.Name)})] {p.BoundType} {p.Identifier}")
                 .ToList();
             if (operation.Body is { Form: true } or { Text: true } || operation.Parameters.Any(p => p.Deep))
             {
@@ -193,15 +199,16 @@ private static (string Key, string Message)? BindingError(Exception exception) =
 
             call.Add("__cancellationToken");
 
-            var returnType = operation.EndpointReturnType;
+            var returnType = EndpointReturnType(operation);
+            var untyped = Untyped(operation);
             w.Line($"app.MapMethods({Naming.Literal(operation.Path)}, new[] {{ {Naming.Literal(operation.Method)} }}, static async Task<{returnType}> ({string.Join(", ", args)}) =>");
             w.Open(string.Empty);
             foreach (var deep in operation.Parameters.Where(p => p.Deep))
             {
-                EmitDeepRead(w, deep, "__http.Query", "__cancellationToken", "throw new BadHttpRequestException(\"The query doesn't match the schema.\", StatusCodes.Status400BadRequest, {0});");
+                EmitDeepRead(w, deep, validation, "__http.Query", "throw new BadHttpRequestException(\"The query doesn't match the schema.\", StatusCodes.Status400BadRequest, {0});");
             }
 
-            EmitEnumReads(w, operation, "return TypedResults.ValidationProblem({0});");
+            EmitEnumReads(w, operation.Parameters, validation, "return TypedResults.ValidationProblem({0});");
 
             if (operation.Body is { Text: true } text)
             {
@@ -211,7 +218,7 @@ private static (string Key, string Message)? BindingError(Exception exception) =
                 w.Close();
                 w.Line();
                 w.Line("var body = await new global::System.IO.StreamReader(__http.Body).ReadToEndAsync(__cancellationToken).ConfigureAwait(false);");
-                w.Line($"if ({ValidationClass}.CheckText(body, {(text.Schema.MinLength ?? (operation.RequiredBody ? 1 : 0)).Invariant()}, {(text.Schema.MaxLength?.Invariant() ?? "null")}, {(text.Schema.Pattern is { } textPattern ? Naming.Literal(textPattern) : "null")}) is {{ }} __textErrors)");
+                w.Line($"if ({validation}.CheckText(body, {(text.Bounds.MinLength ?? (text.Required ? 1 : 0)).Invariant()}, {(text.Bounds.MaxLength?.Invariant() ?? "null")}, {(text.Bounds.Pattern is { } textPattern ? Naming.Literal(textPattern) : "null")}) is {{ }} __textErrors)");
                 w.Line("{");
                 w.Line("    return TypedResults.ValidationProblem(__textErrors);");
                 w.Line("}");
@@ -228,7 +235,7 @@ private static (string Key, string Message)? BindingError(Exception exception) =
                 w.Line();
                 w.Line($"{form.Type} body;");
                 w.Open("try");
-                w.Line($"body = {ValidationClass}.ReadForm<{form.Type}>(global::System.Linq.Enumerable.SelectMany(await __http.ReadFormAsync(__cancellationToken).ConfigureAwait(false), f => global::System.Linq.Enumerable.Select(f.Value, v => new KeyValuePair<string, string>(f.Key, v ?? string.Empty))));");
+                w.Line($"body = {validation}.ReadForm<{form.Type}>(global::System.Linq.Enumerable.SelectMany(await __http.ReadFormAsync(__cancellationToken).ConfigureAwait(false), f => global::System.Linq.Enumerable.Select(f.Value, v => new KeyValuePair<string, string>(f.Key, v ?? string.Empty))));");
                 w.Close();
                 w.Open("catch (JsonException e)");
                 w.Line("throw new BadHttpRequestException(\"The form doesn't match the schema.\", StatusCodes.Status400BadRequest, e);");
@@ -236,7 +243,7 @@ private static (string Key, string Message)? BindingError(Exception exception) =
                 w.Line();
             }
 
-            var bounds = ParameterChecks(operation).ToList();
+            var bounds = ParameterChecks(operation.Parameters, validation).ToList();
             if (bounds.Count > 0)
             {
                 // Bound parameters, checked against the spec's constraints: the binding only checks their type.
@@ -255,8 +262,8 @@ private static (string Key, string Message)? BindingError(Exception exception) =
 
             if (operation.Dependencies.Count > 0)
             {
-                var given = operation.Parameters.Select(p => $"[{Naming.Literal(p.Name)}] = {ValidationClass}.Text({p.Identifier})");
-                w.Line($"if ({ValidationClass}.Broken{operation.Name}Dependencies(new Dictionary<string, string?> {{ {string.Join(", ", given)} }}) is {{ }} __broken)");
+                var given = operation.Parameters.Select(p => $"[{Naming.Literal(p.Name)}] = {validation}.Text({p.Identifier})");
+                w.Line($"if ({validation}.Broken{operation.Name}Dependencies(new Dictionary<string, string?> {{ {string.Join(", ", given)} }}) is {{ }} __broken)");
                 w.Line("{");
                 w.Line("    return TypedResults.ValidationProblem(__broken);");
                 w.Line("}");
@@ -265,7 +272,7 @@ private static (string Key, string Message)? BindingError(Exception exception) =
 
             if (operation.Body is { Validated: true })
             {
-                w.Line($"if ({ValidationClass}.Validate(body) is {{ }} __errors)");
+                w.Line($"if ({validation}.Validate(body) is {{ }} __errors)");
                 w.Line("{");
                 w.Line("    return TypedResults.ValidationProblem(__errors);");
                 w.Line("}");
@@ -273,16 +280,16 @@ private static (string Key, string Message)? BindingError(Exception exception) =
             }
 
             var invoke = $"await __handlers.{operation.Name}({string.Join(", ", call)}).ConfigureAwait(false)";
-            var hasValue = operation.SuccessIsUnion || operation.Successes[0].BodyType is not null;
+            var hasValue = successes.Count > 1 || successes[0].BodyType is not null;
             var headers = operation.ResponseHeaders.Count > 0;
             if (headers)
             {
-                w.Line($"using var __headers = {_apiName}Headers.Begin();");
+                w.Line($"using var __headers = {apiName}Headers.Begin();");
             }
 
             // The response headers the handler set, written onto the response before it's returned.
             var apply = headers ? "foreach (var __header in __headers.Values) __context.Response.Headers[__header.Key] = __header.Value;" : null;
-            if (operation.Errors.Count == 0)
+            if (errors.Count == 0)
             {
                 if (!hasValue)
                 {
@@ -292,7 +299,7 @@ private static (string Key, string Message)? BindingError(Exception exception) =
                         w.Line(apply);
                     }
 
-                    w.Line($"return {operation.Successes[0].Factory("_")};");
+                    w.Line($"return {successes[0].Factory("_")};");
                 }
                 else
                 {
@@ -302,7 +309,7 @@ private static (string Key, string Message)? BindingError(Exception exception) =
                         w.Line(apply);
                     }
 
-                    w.Line($"return {Success(operation, "__value", returnType)};");
+                    w.Line($"return {Success(successes, "__value", returnType)};");
                 }
             }
             else
@@ -314,24 +321,24 @@ private static (string Key, string Message)? BindingError(Exception exception) =
                 }
 
                 w.Line($"return __result.Match<{returnType}>(");
-                w.Line($"    __success => {Success(operation, "__success", returnType)},");
-                w.Line($"    __error => __error.Match<{returnType}>({string.Join(", ", operation.Errors.Select(e => $"__case => {e.Factory("__case.Body")}"))}));");
+                w.Line($"    __success => {Success(successes, "__success", returnType)},");
+                w.Line($"    __error => __error.Match<{returnType}>({string.Join(", ", errors.Select(e => $"__case => {e.Factory("__case.Body")}"))}));");
             }
 
             w.Close(braces: true, suffix: ")");
             w.Line($"    .WithName({Naming.Literal(operation.Id)})");
-            foreach (var problem in operation.Errors.Where(e => e.IsProblem && !e.IsValidation))
+            foreach (var problem in errors.Where(e => e.IsProblem && !e.IsValidation))
             {
                 // ProblemHttpResult carries no response metadata of its own; document each status from the spec.
                 w.Line($"    .Produces<{problem.BodyType}>({problem.Status.Invariant()}, \"application/problem+json\")");
             }
 
-            if (operation.Untyped && (operation.Body is not null || operation.Dependencies.Count > 0 || operation.ValidatesParameters))
+            if (untyped && (operation.Body is not null || operation.Dependencies.Count > 0 || ValidatesParameters(operation)))
             {
                 w.Line("    .ProducesValidationProblem()");
             }
 
-            foreach (var response in operation.Successes.Concat(operation.Errors).Where(r => r.NeedsProduces || operation.Untyped && !r.IsProblem && !r.IsValidation))
+            foreach (var response in operation.Outcomes.Where(r => r.NeedsProduces || untyped && !r.IsProblem && !r.IsValidation))
             {
                 // Written by number, so documented here: TypedResults.Json and StatusCode declare nothing themselves.
                 w.Line(response.BodyType is null || response.IsRedirect
@@ -343,10 +350,37 @@ private static (string Key, string Message)? BindingError(Exception exception) =
             w.Line();
         }
 
-        private static string Success(Operation operation, string value, string returnType)
-            => operation.SuccessIsUnion
-                ? $"{value}.Match<{returnType}>({string.Join(", ", operation.Successes.Select(s => $"__case => {s.Factory("__case.Body")}"))})"
-                : operation.Successes[0].Factory(value);
+        private static string Success(IReadOnlyList<OutcomeShape> successes, string value, string returnType)
+            => successes.Count > 1
+                ? $"{value}.Match<{returnType}>({string.Join(", ", successes.Select(s => $"__case => {s.Factory("__case.Body")}"))})"
+                : successes[0].Factory(value);
+
+        /// <summary>A parameter the endpoint reads or checks itself: a deep object, an enum, or one with bounds, lengths or a pattern.</summary>
+        private static bool ValidatesParameters(OperationShape operation) => operation.Parameters.Any(p => p.Deep || p.Enum || p.Bounds?.Checked == true);
+
+        /// <summary>The result types the endpoint can return: each success, the validation problem when it checks anything, each error.</summary>
+        private static List<string> ResultTypes(OperationShape operation)
+        {
+            var types = operation.Successes.Select(r => r.ResultType).ToList();
+            if (operation.Body is not null || operation.Dependencies.Count > 0 || ValidatesParameters(operation))
+            {
+                types.Add("ValidationProblem");
+            }
+
+            types.AddRange(operation.Errors.Select(r => r.ResultType));
+
+            // Every problem response is one ProblemHttpResult; its status comes from the body.
+            return types.Distinct().ToList();
+        }
+
+        /// <summary>Results&lt;...&gt; takes at most six types; past that the endpoint returns IResult and declares every response with .Produces.</summary>
+        private static bool Untyped(OperationShape operation) => ResultTypes(operation).Count > 6;
+
+        private static string EndpointReturnType(OperationShape operation)
+        {
+            var types = ResultTypes(operation);
+            return types.Count > 6 ? "IResult" : types.Count == 1 ? types[0] : $"Results<{string.Join(", ", types)}>";
+        }
 
         private void Unsupported(string what, string why)
             => Diagnostics.Add(Diagnostic.Create(Generator.Diagnostics.Unsupported, _location, what, why));

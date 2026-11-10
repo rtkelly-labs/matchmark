@@ -24,14 +24,11 @@ namespace Matchmark.Generator
 
             public string MediaType { get; set; } = "application/json";
 
-            /// <summary>Sent as application/x-www-form-urlencoded, nested values in brackets (card[number]), as Stripe does.</summary>
-            public bool Form => MediaType == FormMedia;
+            public bool Form => BodyShape.IsForm(MediaType);
 
-            /// <summary>Text (text/plain, text/markdown...): a string, read as it is.</summary>
-            public bool Text => MediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase);
+            public bool Text => BodyShape.IsText(MediaType);
 
-            /// <summary>A generated object type, so the validation class has a Validate for it (a list or a primitive body has none).</summary>
-            public bool Validated => !Enum && !Type.Contains("global::", StringComparison.Ordinal) && Type is not ("string" or "int" or "long" or "float" or "double" or "decimal" or "bool");
+            public bool Validated => BodyShape.IsValidated(Type, Enum);
 
             /// <summary>A body that's one of an enum's values.</summary>
             public bool Enum { get; set; }
@@ -115,7 +112,10 @@ namespace Matchmark.Generator
             /// <summary>The body's schema, for turning a sample into C#.</summary>
             public IOpenApiSchema? Schema { get; set; }
 
-            public string CaseName => Status switch { 0 => "Default", -4 => "ClientError", -5 => "ServerError", _ => Naming.StatusNames[Status] };
+            /// <summary>Its decisions, made once by <see cref="OutcomeShape"/>: how it's named, typed and written.</summary>
+            public OutcomeShape Outcome(bool success, SchemaShape? schema = null) => new(Status, schema, BodyType, MediaType, success, IsValidation, IsRedirect, ItemType);
+
+            public string CaseName => Outcome(false).CaseName;
 
             /// <summary>The spec's "default" response: any status it doesn't name. Its case carries the status.</summary>
             public bool IsDefault => Status == 0;
@@ -129,53 +129,17 @@ namespace Matchmark.Generator
             /// <summary>The status as a C# pattern: 404, >= 400 and &lt; 500, or _ (default).</summary>
             public string Pattern => Status switch { 0 => "_", -4 => ">= 400 and < 500", -5 => ">= 500 and < 600", _ => Status.Invariant() };
 
-            /// <summary>
-            /// A ProblemDetails body. TypedResults.NotFound(problem) and friends write it as application/json, so it
-            /// goes out through TypedResults.Problem, which writes application/problem+json.
-            /// </summary>
-            public bool IsProblem => BodyType is { } type && WellKnownSchemas.ContainsValue(type);
+            public bool IsProblem => Outcome(false).IsProblem;
 
-            /// <summary>The <c>Microsoft.AspNetCore.Http.HttpResults</c> type this response is written as.</summary>
-            public string ResultType => IsRedirect ? "RedirectHttpResult"
-                : IsEventStream ? $"ServerSentEventsResult<{ItemType}>"
-                : IsStream ? "PushStreamHttpResult"
-                : Status == 401 && BodyType is null
-                ? "UnauthorizedHttpResult"
-                : IsValidation ? "ValidationProblem"
-                : IsProblem ? "ProblemHttpResult"
-                : !HasFactory ? BodyType is null ? "StatusCodeHttpResult" : $"JsonHttpResult<{BodyType}>"
-                : BodyType is null ? CaseName : $"{CaseName}<{BodyType}>";
+            public string ResultType => Outcome(false).ResultType;
 
-            /// <summary>A status with a TypedResults factory of its own (TypedResults.Conflict); the rest go out by number.</summary>
-            public bool HasFactory => !IsStream && !CarriesStatus && !IsRedirect && (Status is 200 or 201 or 202 or 204 or 400 or 404 or 409 or 422 or 500 || Status == 401 && BodyType is null);
+            public bool HasFactory => Outcome(false).HasFactory;
 
-            /// <summary>
-            /// Written by number (TypedResults.Json or StatusCode), so the result type carries no response metadata: the
-            /// endpoint declares it with .Produces, as it does for problems.
-            /// </summary>
-            public bool NeedsProduces => !IsValidation && !IsProblem && !HasFactory && !CarriesStatus;
+            public bool NeedsProduces => Outcome(false).NeedsProduces;
 
-            /// <summary>The TypedResults call that produces it, given the body expression.</summary>
-            /// <summary>The status a default case carries, from the expression for its body ("__case.Body" → "__case.Status").</summary>
-            public static string StatusOf(string body) => (body.EndsWith(".Body", StringComparison.Ordinal) ? body.Substring(0, body.Length - 5) : body) + ".Status";
+            public static string StatusOf(string body) => OutcomeShape.StatusOf(body);
 
-            public string Factory(string body) => (Status, BodyType is null) switch
-            {
-                _ when IsRedirect => $"TypedResults.Redirect({body}, permanent: {(Status is 301 or 308 ? "true" : "false")}, preserveMethod: {(Status is 307 or 308 ? "true" : "false")})",
-                _ when CarriesStatus => BodyType is null ? $"TypedResults.StatusCode({StatusOf(body)})"
-                    : IsProblem ? $"Problem({body}, {StatusOf(body)})"
-                    : $"TypedResults.Json({body}, statusCode: {StatusOf(body)})",
-                _ when IsEventStream => $"TypedResults.ServerSentEvents({body})",
-                _ when IsStream => $"TypedResults.Stream(async __stream => {{ await foreach (var __item in {body}) {{ await global::System.Text.Json.JsonSerializer.SerializeAsync(__stream, __item, global::System.Text.Json.JsonSerializerOptions.Web); await __stream.WriteAsync(new byte[] {{ 10 }}); }} }}, {Naming.Literal(MediaType!)})",
-                _ when IsValidation => $"TypedResults.ValidationProblem({body}.Errors, {body}.Detail, {body}.Instance, {body}.Title, {body}.Type)",
-                _ when IsProblem => $"Problem({body}, {Status.Invariant()})",
-                (_, true) when !HasFactory => $"TypedResults.StatusCode({Status.Invariant()})",
-                (_, false) when !HasFactory => $"TypedResults.Json({body}, statusCode: {Status.Invariant()})",
-                (201 or 202, false) => $"TypedResults.{CaseName}((string?)null, {body})",
-                (201 or 202, true) => $"TypedResults.{CaseName}((string?)null)",
-                (_, false) => $"TypedResults.{CaseName}({body})",
-                _ => $"TypedResults.{CaseName}()",
-            };
+            public string Factory(string body) => Outcome(false).Factory(body);
         }
 
         private sealed class Operation
@@ -199,10 +163,6 @@ namespace Matchmark.Generator
             public string Tag { get; }
 
             public List<Param> Parameters { get; } = new();
-
-            /// <summary>A parameter has constraints (bounds, lengths, a pattern) the endpoint checks.</summary>
-            public bool ValidatesParameters => Parameters.Any(p => p.Deep || p.Enum || p.Schema is { } s && (s.Minimum is not null || s.Maximum is not null
-                || s.MinLength is not null || s.MaxLength is not null || s.Pattern is not null));
 
             /// <summary>Its x-dependencies (IDL), enforced at the endpoint when Matchmark.Rules is referenced.</summary>
             public List<string> Dependencies { get; } = new();
@@ -244,28 +204,6 @@ namespace Matchmark.Generator
                 (_, true) => $"Task<Result<{SuccessType}, {ErrorType}>>",
                 (_, false) => $"Task<VoidResult<{ErrorType}>>",
             };
-
-            public List<string> ResultTypes
-            {
-                get
-                {
-                    var types = Successes.Select(r => r.ResultType).ToList();
-                    if (Body is not null || Dependencies.Count > 0 || ValidatesParameters)
-                    {
-                        types.Add("ValidationProblem");
-                    }
-
-                    types.AddRange(Errors.Select(r => r.ResultType));
-
-                    // Every problem response is one ProblemHttpResult; its status comes from the body.
-                    return types.Distinct().ToList();
-                }
-            }
-
-            /// <summary>Results&lt;...&gt; takes at most six types; past that the endpoint returns IResult and declares every response with .Produces.</summary>
-            public bool Untyped => ResultTypes.Count > 6;
-
-            public string EndpointReturnType => Untyped ? "IResult" : ResultTypes.Count == 1 ? ResultTypes[0] : $"Results<{string.Join(", ", ResultTypes)}>";
         }
 
         private List<Operation> CollectOperations()
@@ -310,22 +248,22 @@ namespace Matchmark.Generator
         /// when it's required, the missing value is the problem). <paramref name="fail"/> throws or returns, given a
         /// JsonException placed at the parameter.
         /// </summary>
-        private void EmitDeepRead(CodeWriter w, Param deep, string query, string cancellation, string fail)
+        private static void EmitDeepRead(CodeWriter w, ParameterShape deep, string validation, string query, string fail)
         {
-            var type = deep.Type.TrimEnd('?');
+            var type = deep.Type;
             var node = $"__node_{deep.Identifier.TrimStart('@')}";
-            w.Line($"{deep.Type} {deep.Identifier};");
+            w.Line($"{deep.BoundType} {deep.Identifier};");
             w.Open("try");
             var fields = $"global::System.Linq.Enumerable.SelectMany({query}, q => global::System.Linq.Enumerable.Select(q.Value, v => new KeyValuePair<string, string>(q.Key, v ?? string.Empty)))";
             w.Line(deep.Whole
-                ? $"var {node} = {ValidationClass}.QueryAll({fields});"
-                : $"var {node} = {ValidationClass}.QueryNode({fields}, {Naming.Literal(deep.Name)});");
-            if (!deep.Type.EndsWith("?", StringComparison.Ordinal))
+                ? $"var {node} = {validation}.QueryAll({fields});"
+                : $"var {node} = {validation}.QueryNode({fields}, {Naming.Literal(deep.Name)});");
+            if (deep.Required)
             {
                 w.Line($"if ({node} is null) throw new global::System.Text.Json.JsonException(\"The query is missing required properties including: '{deep.Name}'.\", \"$\", null, null);");
             }
 
-            w.Line($"{deep.Identifier} = {node} is null ? default({deep.Type}) : {ValidationClass}.FromNode<{type}>({node});");
+            w.Line($"{deep.Identifier} = {node} is null ? default({deep.BoundType}) : {validation}.FromNode<{type}>({node});");
             w.Close();
             w.Open("catch (global::System.Text.Json.JsonException e)");
             w.Line(string.Format(CultureInfo.InvariantCulture, fail,
@@ -347,22 +285,22 @@ namespace Matchmark.Generator
         /// Reads each enum parameter from its text by its name in the spec (the enum's own converter), into its local;
         /// a value the spec doesn't name, or a required one missing, is the validation problem <paramref name="fail"/> gives.
         /// </summary>
-        private void EmitEnumReads(CodeWriter w, Operation operation, string fail)
+        private static void EmitEnumReads(CodeWriter w, IEnumerable<ParameterShape> parameters, string validation, string fail)
         {
-            foreach (var parameter in operation.Parameters.Where(p => p.Enum))
+            foreach (var parameter in parameters.Where(p => p.Enum))
             {
                 var name = parameter.Identifier.TrimStart('@');
-                var type = parameter.Type.TrimEnd('?');
+                var type = parameter.Type;
                 var problem = $"new Dictionary<string, string[]> {{ [{Naming.Literal(parameter.Name)}] = new[] {{ $\"'{{__text_{name}}}' is not one of the values the spec allows.\" }} }}";
-                w.Line($"{parameter.Type} {parameter.Identifier} = default;");
+                w.Line($"{parameter.BoundType} {parameter.Identifier} = default;");
                 w.Open($"if (__text_{name} is not null)");
-                w.Open($"if (!{ValidationClass}.TryEnum<{type}>(__text_{name}, out var __value_{name}))");
+                w.Open($"if (!{validation}.TryEnum<{type}>(__text_{name}, out var __value_{name}))");
                 w.Line(string.Format(CultureInfo.InvariantCulture, fail, problem));
                 w.Close();
                 w.Line();
                 w.Line($"{parameter.Identifier} = __value_{name};");
                 w.Close();
-                if (!parameter.Type.EndsWith("?", StringComparison.Ordinal))
+                if (parameter.Required)
                 {
                     w.Open("else");
                     w.Line(string.Format(CultureInfo.InvariantCulture, fail, $"new Dictionary<string, string[]> {{ [{Naming.Literal(parameter.Name)}] = new[] {{ \"The value is required.\" }} }}"));
@@ -424,24 +362,24 @@ namespace Matchmark.Generator
         }
 
         /// <summary>The checks of an endpoint's bound parameters, each adding to <c>__invalid</c>, by the spec's constraints.</summary>
-        private IEnumerable<string> ParameterChecks(Operation operation)
+        private static IEnumerable<string> ParameterChecks(IEnumerable<ParameterShape> parameters, string validation)
         {
-            foreach (var (parameter, index) in operation.Parameters.Select((p, i) => (p, i)))
+            foreach (var (parameter, index) in parameters.Select((p, i) => (p, i)))
             {
-                if (parameter.Schema is not { } schema)
+                if (parameter.Bounds is not { } bounds)
                 {
                     continue;
                 }
 
                 // A deep object is one of the generated types: its own Validate, each error under the parameter's name.
-                if (parameter.Deep && _schemas.Keys.Select(Naming.Pascal).Contains(parameter.Type.TrimEnd('?')))
+                if (parameter.Deep && parameter.Generated)
                 {
                     var prefix = parameter.Whole ? string.Empty : parameter.Name + ".";
-                    yield return $"if ({parameter.Identifier} is {{ }} __deep{index.Invariant()} && {ValidationClass}.Validate(__deep{index.Invariant()}) is {{ }} __errors{index.Invariant()}) foreach (var __e in __errors{index.Invariant()}) __invalid[{Naming.Literal(prefix)} + __e.Key] = __e.Value;";
+                    yield return $"if ({parameter.Identifier} is {{ }} __deep{index.Invariant()} && {validation}.Validate(__deep{index.Invariant()}) is {{ }} __errors{index.Invariant()}) foreach (var __e in __errors{index.Invariant()}) __invalid[{Naming.Literal(prefix)} + __e.Key] = __e.Value;";
                     continue;
                 }
 
-                var type = parameter.Type.TrimEnd('?');
+                var type = parameter.Type;
                 var key = Naming.Literal(parameter.Name);
 
                 // A pattern variable in an if's condition is in scope for the whole block: one name per check.
@@ -450,34 +388,34 @@ namespace Matchmark.Generator
                 string When() => $"{parameter.Identifier} is {{ }} {local = $"__p{index.Invariant()}_{(checks++).Invariant()}"}";
                 if (type is "int" or "long" or "float" or "double" or "decimal" or "short")
                 {
-                    if (schema.Minimum is { } minimum)
+                    if (bounds.Minimum is { } minimum)
                     {
                         yield return $"if ({When()} && {local} < {Number(minimum)}) __invalid[{key}] = new[] {{ \"Must be at least {Number(minimum)}.\" }};";
                     }
 
-                    if (schema.Maximum is { } maximum)
+                    if (bounds.Maximum is { } maximum)
                     {
                         yield return $"if ({When()} && {local} > {Number(maximum)}) __invalid[{key}] = new[] {{ \"Must be at most {Number(maximum)}.\" }};";
                     }
                 }
                 else if (type == "string")
                 {
-                    if (schema.MinLength is { } min)
+                    if (bounds.MinLength is { } min)
                     {
                         yield return $"if ({When()} && {local}.Length < {min.Invariant()}) __invalid[{key}] = new[] {{ \"Must be at least {min.Invariant()} characters.\" }};";
                     }
 
-                    if (schema.MaxLength is { } max)
+                    if (bounds.MaxLength is { } max)
                     {
                         yield return $"if ({When()} && {local}.Length > {max.Invariant()}) __invalid[{key}] = new[] {{ \"Must be at most {max.Invariant()} characters.\" }};";
                     }
 
-                    if (schema.Pattern is { } pattern)
+                    if (bounds.Pattern is { } pattern)
                     {
                         yield return $"if ({When()} && !global::System.Text.RegularExpressions.Regex.IsMatch({local}, {Naming.Literal(pattern)})) __invalid[{key}] = new[] {{ {Naming.Literal("Must match " + pattern + ".")} }};";
                     }
 
-                    if (FormatCheck(schema.Format, "__fmt") is { } format)
+                    if (FormatCheck(bounds.Format, "__fmt") is { } format)
                     {
                         var when = When();
                         yield return $"if ({when} && {format.Condition.Replace("__fmt", local)}) __invalid[{key}] = new[] {{ {Naming.Literal(format.Message)} }};";

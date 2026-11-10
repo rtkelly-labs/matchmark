@@ -32,6 +32,8 @@
   <ItemGroup>
     <!-- The benchmarks time the parse step, which is internal. -->
     <InternalsVisibleTo Include="Matchmark.Benchmarks" />
+    <!-- The tests emit from hand-built shapes, which are internal (model.md: outputs tested without Roslyn). -->
+    <InternalsVisibleTo Include="Matchmark.Generator.Tests" />
   </ItemGroup>
   <ItemGroup>
     <!-- Matchmark's own readers (Q56): referenced, and shipped beside the generator in the analyzer folder. -->

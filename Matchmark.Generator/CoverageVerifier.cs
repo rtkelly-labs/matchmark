@@ -612,7 +612,7 @@ namespace Matchmark.Generator
 
             var body = bindings.FirstOrDefault(b => b.Source == "Body");
             var model = bindings.FirstOrDefault(b => b.Source == "Model");
-            if (operation.BodyType is { } expected)
+            if (operation.Body?.Type is { } expected)
             {
                 if (body is null)
                 {
@@ -620,7 +620,7 @@ namespace Matchmark.Generator
                         ? $"the spec has a {TypeName(expected)} request body, but the endpoint binds none"
                         : $"the spec has a {TypeName(expected)} request body, but '{model.Parameter}' binds from the form and query: mark it [FromBody], or add [ApiController]");
                 }
-                else if (operation.Body is { } schema)
+                else if (operation.Body?.Schema is { } schema)
                 {
                     foreach (var diagnostic in VerifyModel(components, schema, body.FullType, endpoint, where, "the request body"))
                     {
@@ -718,7 +718,7 @@ namespace Matchmark.Generator
 
                 foreach (var (status, type) in endpoint.ResponseTypes)
                 {
-                    if (operation.Responses.FirstOrDefault(r => r.Status == status) is not { } response)
+                    if (operation.Outcomes.FirstOrDefault(r => r.Status == status) is not { } response)
                     {
                         continue; // MM013 already reports it.
                     }

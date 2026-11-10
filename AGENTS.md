@@ -51,7 +51,7 @@ From the repository root:
 
 | Check | Command | Notes |
 |:--|:--|:--|
-| Everything | `dotnet test Matchmark.slnx -c Release` | Specs 830 (65 skipped), Testing 161, Generator 280 (2 skipped), Sample 121 |
+| Everything | `dotnet test Matchmark.slnx -c Release` | Specs 830 (65 skipped), Testing 161, Generator 288 (2 skipped), Sample 121 |
 | The readers | `dotnet test Matchmark.Specs.Tests -c Release` | Matchmark's own AsyncAPI, Arazzo and Overlay readers against everything vendored in `specs/`: fixtures, official schemas, compliant sets, examples, and mutations compared with the official schemas |
 | Large specs | `sh samples/large/fetch.sh`, then `MATCHMARK_LARGE_SPECS=$PWD/samples/large dotnet test Matchmark.Generator.Tests -c Release --filter LargeSpecTests` | GitHub's and Stripe's specs, fetched and not committed. They must compile with 0 errors; the share generated (98.7%, 99.8%) should only rise |
 | The specifications' examples | part of `dotnet test` (`OfficialExamplesTests`) | Vendored in `specs/` at pinned commits; 57 of 57 |
@@ -72,8 +72,9 @@ The ledgers (`corpus-ledger.txt`, `large-ledger.txt`, `examples-ledger.txt`) are
 Each item links to the page that defines it. Update that page as items are built.
 
 1. **Emitters onto the shape** (roadmap step 2). The parse step (`ApiShape`), Verify on the shape, and the per-tag
-   partition are built. Next is moving the emitters to be pure functions of a shape: endpoints first, then handlers and
-   client, then components. Each step adds an `IncrementalityTests` case.
+   partition are built, and each tag's endpoints are a pure function of its `TagShape`. Next is moving the other
+   emitters to be pure functions of a shape: handlers and client, then components. Each step adds an
+   `IncrementalityTests` case.
    [model.md: Its shape in the pipeline](docs/reference/model.md#its-shape-in-the-pipeline).
 2. **The engine on the model**: once question 1 is decided. [model.md: Status](docs/reference/model.md#status).
 3. **Verify** (roadmap step 3): every version read through the standard libraries. The libraries are measured against
