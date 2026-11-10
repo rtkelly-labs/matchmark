@@ -246,10 +246,10 @@ namespace Matchmark.Generator
                 }
 
                 w.Open($"public async Task<IActionResult> {operation.Name}({string.Join(", ", args.Append("CancellationToken cancellationToken"))})");
-                EmitEnumReads(w, operation, "return ValidationProblem(modelStateDictionary: Invalid({0}));");
+                EmitEnumReads(w, operation.Parameters.Select(ParameterShapeOf), ValidationClass, "return ValidationProblem(modelStateDictionary: Invalid({0}));");
                 foreach (var deep in operation.Parameters.Where(p => p.Deep))
                 {
-                    EmitDeepRead(w, deep, "Request.Query", "cancellationToken",
+                    EmitDeepRead(w, ParameterShapeOf(deep), ValidationClass, "Request.Query",
                         $"{{{{ var (key, message) = {ValidationClass}.BindingError(({{0}}).Path ?? \"$\", ({{0}}).Message); return ValidationProblem(modelStateDictionary: Invalid(new Dictionary<string, string[]> {{{{ [key] = [message] }}}})); }}}}");
                 }
 
