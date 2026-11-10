@@ -1,0 +1,163 @@
+name: ci
+
+# Matchmark: its tests, then the large public specs (GitHub's and Stripe's,
+# fetched, not committed), whose share of operations generated is a number that should only rise, and the
+# specifications' own examples at pinned commits (decision Q51), measured the same way.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test Matchmark.slnx --configuration Release
+
+      - name: Fetch the large specs
+        run: sh samples/large/fetch.sh
+
+      - name: Generate and compile the large specs
+        env:
+          MATCHMARK_LARGE_SPECS: ${{ github.workspace }}/samples/large
+        run: dotnet test Matchmark.Generator.Tests --configuration Release --no-build --filter LargeSpecTests
+
+      - name: Fetch the specifications' own examples
+        run: sh samples/examples/fetch.sh
+
+      - name: Measure the specifications' own examples
+        env:
+          MATCHMARK_EXAMPLES: ${{ github.workspace }}/samples/examples
+        run: dotnet test Matchmark.Generator.Tests --configuration Release --no-build --filter OfficialExamplesTests
+
+      - name: Ledgers
+        if: always()
+        run: |
+          {
+            echo '### Corpus'
+            echo '```'
+            cat Matchmark.Generator.Tests/bin/Release/net10.0/corpus-ledger.txt 2>/dev/null || echo 'no ledger'
+            echo '```'
+            echo '### Large specs'
+            echo '```'
+            cat Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt 2>/dev/null || echo 'not run'
+            echo '```'
+            echo "### The specifications' own examples"
+            echo '```'
+            cat Matchmark.Generator.Tests/bin/Release/net10.0/examples-ledger.txt 2>/dev/null || echo 'not run'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image:
+    name: container image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the image
+        run: docker build --tag matchmark .
+
+      - name: Audit a sample with it
+        run: docker run --rm --volume "$PWD/samples/ledger:/work" matchmark audit openapi.yaml
+
+      - name: Host sessions with it
+        run: |
+          docker run --detach --name host --publish 8080:8080 --volume "$PWD/samples/sessions:/work" \
+            matchmark host openapi.yaml --urls http://0.0.0.0:8080
+          for i in $(seq 30); do curl --silent --fail --output /dev/null --request PUT http://localhost:8080/__fake/sessions/ci && break; sleep 1; done
+          curl --silent --fail --header 'X-Matchmark-Session: ci' http://localhost:8080/pets
+          docker rm --force host
+
+  package:
+    name: package consumption
+    # The generator as a consumer gets it: packed, then referenced by a fresh project outside this repository's build files.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pack and consume
+        run: eng/consume-package.sh "$RUNNER_TEMP/consume"
+
+  derived:
+    name: derived evidence
+    # Diffra's approach to generated assets: what the generator decides and writes, derived on the pull request and on
+    # its merge-base and diffed, never committed. A change to the model or the public surface needs review; a change
+    # only in generated bodies is information. A base that can't be derived is reported as unavailable, never a pass.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Derive the head
+        env:
+          MATCHMARK_DERIVED: ${{ runner.temp }}/derived/head
+        run: dotnet test Matchmark.Generator.Tests --configuration Release --filter DerivedEvidenceTests
+
+      - name: Derive the base
+        if: github.event_name == 'pull_request'
+        env:
+          MATCHMARK_DERIVED: ${{ runner.temp }}/derived/base
+        run: |
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          git worktree add "$RUNNER_TEMP/base" "$base"
+          if [ -f "$RUNNER_TEMP/base/Matchmark.Generator.Tests/DerivedEvidenceTests.cs" ]; then
+            (cd "$RUNNER_TEMP/base" && dotnet test Matchmark.Generator.Tests --configuration Release --filter DerivedEvidenceTests)
+          else
+            echo "The base ($base) has no derived evidence: unavailable, not a pass." > "$RUNNER_TEMP/derived-unavailable"
+          fi
+
+      - name: Diff
+        if: github.event_name == 'pull_request'
+        run: |
+          head="$RUNNER_TEMP/derived/head"; base="$RUNNER_TEMP/derived/base"
+          {
+            echo '### Derived evidence'
+            if [ -f "$RUNNER_TEMP/derived-unavailable" ]; then cat "$RUNNER_TEMP/derived-unavailable"; exit 0; fi
+            for kind in model.json api.txt g.cs; do
+              changed=$(diff -rq "$base" "$head" | grep -c "\.$kind" || true)
+              echo "- \`*.$kind\`: $changed file(s) differ"
+            done
+            echo
+            echo '#### Model and public surface (needs review)'
+            echo '```diff'
+            diff -ru "$base" "$head" --exclude='*.g.cs' | head -n 400 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
