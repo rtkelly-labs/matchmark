@@ -1,10 +1,10 @@
 name: large specs
 
 # The large public specs (GitHub's and Stripe's, fetched from upstream, not committed): the share of operations
-# generated, a number that should only rise, and that what is generated compiles with no error. Over an hour, almost
-# all of it in compiling what the generator writes (a generator run over GitHub's spec is 2.7 s), so it isn't a pull
-# request's check: it runs on main, weekly (upstream moves), and on demand. Its own workflow, so that ci.yml's
-# required checks on main never queue behind it.
+# generated, a number that should only rise, and that what is generated compiles with no error. Its first run on GitHub
+# took 1h10m for the two specs, against 3m19s for the whole of the rest of the suite; why is open (GAPS.md: the large
+# specs' time). So it isn't a pull request's check: it runs on main, weekly (upstream moves), and on demand. Its own
+# workflow, so that ci.yml's required checks on main never queue behind it.
 on:
   push:
     branches: [ main ]
@@ -43,8 +43,10 @@ jobs:
           MATCHMARK_LARGE_SPECS: ${{ github.workspace }}/samples/large
         # The ledger has a line per spec examined: two, or the run examined nothing and fails.
         run: |
-          dotnet test Matchmark.Generator.Tests --configuration Release --filter LargeSpecTests
-          examined=$(wc -l < Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt)
+          dotnet test Matchmark.Generator.Tests --configuration Release --filter LargeSpecTests --logger 'console;verbosity=detailed'
+          ledger=Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt
+          cat "$ledger"
+          examined=$(wc -l < "$ledger")
           echo "examined $examined large specs"
           test "$examined" -eq 2
 

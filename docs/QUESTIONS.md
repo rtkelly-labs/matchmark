@@ -59,7 +59,7 @@ same way, which splits their classes into per-tag partials.
 
 **5. Should the scripts become C# file-based apps?** The estate's script policy (rtkelly13/rig) bans `.sh` files, and
 three remain: `eng/consume-package.sh` (CI's package job), `specs/vendor.sh` (re-vendoring the specifications) and
-`samples/large/fetch.sh` (CI's test job and the large-spec check). Each could be a C# file-based app, run with
+`samples/large/fetch.sh` (the large-specs workflow and check). Each could be a C# file-based app, run with
 `dotnet run <app>.cs`, so the repository needs only the SDK it already pins.
 *What decides it:* whether the policy applies to this repository as written, and whether `dotnet run app.cs` covers
 what each script relies on (`curl`, `git`, a work directory such as `$RUNNER_TEMP`) as simply, in CI and locally.
