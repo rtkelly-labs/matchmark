@@ -85,7 +85,8 @@ static string Sha256(string path)
     return Convert.ToHexStringLower(SHA256.HashData(stream));
 }
 
-static string Here([CallerFilePath] string path = "") => Path.GetDirectoryName(path)!;
+// dotnet run sets the entry point's directory; [CallerFilePath] is the fallback, since CI's deterministic build maps it to /_/.
+static string Here([CallerFilePath] string path = "") => AppContext.GetData("EntryPointFileDirectoryPath") as string ?? Path.GetDirectoryName(path)!;
 
 internal sealed record Source(string Name, string Repository, string Branch, string Path, string Commit, string Sha256)
 {
