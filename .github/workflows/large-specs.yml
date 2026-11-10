@@ -33,9 +33,9 @@ on:
         type: number
         default: 0
       duration:
-        description: 'Minutes to trace (0: until the test ends)'
+        description: 'Seconds to trace. It must stop before the test ends: method names come from the rundown at the stop'
         type: number
-        default: 0
+        default: 30
 
 permissions:
   contents: read
@@ -176,7 +176,7 @@ jobs:
         env:
           SPEC: ${{ matrix.spec }}
           DELAY: ${{ inputs.delay || 0 }}
-          DURATION: ${{ inputs.duration || 0 }}
+          DURATION: ${{ inputs.duration || 30 }}
         run: |
           mkdir -p "$RUNNER_TEMP/spec" profile
           cp "samples/large/$SPEC.json" "$RUNNER_TEMP/spec/"
@@ -193,8 +193,9 @@ jobs:
           echo "testhost is $pid"
           dotnet-counters collect -p "$pid" --counters System.Runtime --refresh-interval 5 --format csv -o profile/counters.csv > /dev/null &
           if [ "$DELAY" -gt 0 ]; then sleep $((DELAY * 60)); fi
+          # A trace still running when testhost exits has no method rundown, so its frames have no names: bound it.
           limit=()
-          if [ "$DURATION" -gt 0 ]; then limit=(--duration "$(printf '00:%02d:%02d:00' $((DURATION / 60)) $((DURATION % 60)))"); fi
+          if [ "$DURATION" -gt 0 ]; then limit=(--duration "$(printf '00:%02d:%02d:%02d' $((DURATION / 3600)) $((DURATION / 60 % 60)) $((DURATION % 60)))"); fi
           dotnet-trace collect -p "$pid" --profile dotnet-common,dotnet-sampled-thread-time "${limit[@]}" \
             --format Speedscope -o "profile/$SPEC.nettrace" || echo "::warning::dotnet-trace exited $?"
           status=0

@@ -16,6 +16,7 @@ using var stream = File.OpenRead(args[0]);
 using var doc = JsonDocument.Parse(stream);
 var frames = doc.RootElement.GetProperty("shared").GetProperty("frames").EnumerateArray().Select(f => f.GetProperty("name").GetString() ?? "?").ToArray();
 var idle = Array.IndexOf(frames, "UNMANAGED_CODE_TIME");
+var cpu = Array.IndexOf(frames, "CPU_TIME");
 
 var self = new double[frames.Length];
 var inclusive = new double[frames.Length];
@@ -39,7 +40,8 @@ void Charge(IReadOnlyList<int> stack, double dt, ref double threadBusy)
 
     busy += dt;
     threadBusy += dt;
-    self[stack[^1]] += dt;
+    // A thread-time sample ends in a CPU_TIME pseudo-frame: the self time is the method above it.
+    self[stack.Count > 1 && stack[^1] == cpu ? stack[^2] : stack[^1]] += dt;
     stamp++;
     foreach (var f in stack)
     {
