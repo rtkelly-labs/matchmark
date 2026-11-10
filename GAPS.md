@@ -126,3 +126,7 @@ onto the shape is the model's next step ([model.md](docs/reference/model.md#its-
 - **`default(Result<,>)`** reads as a success holding `null` (README, finding 6). That is a bug in Resultful itself,
   not in the prototype, and is worth an issue of its own. *Status:* filed as
   [Resultful/Resultful#19](https://github.com/Resultful/Resultful/issues/19).
+- **Resultful from NuGet is from 2021.** Since the split, the samples and the opt-in adapter's tests take `Resultful`
+  0.2.0-beta05, published in March 2021. Everything passes against it, but it no longer exercises Resultful's current
+  source, so a change there reaches Matchmark only through a release. *Status:* open, waiting on a current Resultful
+  release, then a version bump in `Directory.Packages.props`.
