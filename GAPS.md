@@ -126,7 +126,11 @@ onto the shape is the model's next step ([model.md](docs/reference/model.md#its-
 - **`default(Result<,>)`** reads as a success holding `null` (README, finding 6). That is a bug in Resultful itself,
   not in the prototype, and is worth an issue of its own. *Status:* filed as
   [Resultful/Resultful#19](https://github.com/Resultful/Resultful/issues/19).
-- **Resultful from NuGet is from 2021.** Since the split, the samples and the opt-in adapter's tests take `Resultful`
+- **Resultful from NuGet is from 2021.** Since Matchmark was laid out as its own repository, the samples and the opt-in adapter's tests take `Resultful`
   0.2.0-beta05, published in March 2021. Everything passes against it, but it no longer exercises Resultful's current
   source, so a change there reaches Matchmark only through a release. *Status:* open, waiting on a current Resultful
   release, then a version bump in `Directory.Packages.props`.
+- **The large specs' time.** On GitHub, `LargeSpecTests` took 1h10m for GitHub's and Stripe's specs, where the rest of
+  the suite took 3m19s and a whole generator run over GitHub's spec is benchmarked at 2.7 s. Which spec and which phase
+  (generating, or Roslyn compiling and analysing what it writes) is not yet measured; `large-specs.yml` logs each test's
+  duration to find out. *Status:* open. Meanwhile the large specs run on `main` and weekly, not on pull requests.
