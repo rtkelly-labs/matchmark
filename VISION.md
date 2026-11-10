@@ -263,7 +263,8 @@ flowchart LR
 - ✓ The twin, fidelity runs and the gated agent loop (see Later, above).
 
 **1. Own home.**
-- Matchmark moves to its own repository, with its history.
+- ✓ Matchmark moves to its own repository, with its history:
+  [rtkelly-labs/matchmark](https://github.com/rtkelly-labs/matchmark).
 - ✓ Generated contracts use plain unions by default; Resultful and OneOf are an opt-in adapter
   (`MatchmarkOutcomes="Resultful"`).
 

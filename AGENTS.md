@@ -41,9 +41,10 @@ the backlog in order, and what's waiting or blocked. The why is in the pages it 
   and Corvus.Json.Validator over JsonSchema.Net, for this reason. Add every package to `Directory.Packages.props` with
   a comment saying why.
 - **Git.** Commit subjects are conventional (`feat: …`, `test: …`, `docs: …`, with an optional scope such as `feat(generator): …`). Work goes
-  on the session's branch, rebased and never merged. Open a pull request only when the maintainer asks. History is linear: pull
-  requests are squash-merged, branches are rebased (never merged) and deleted on merge. Scratch files, local databases
-  and worktrees go in a gitignored `temp/`, never in the tree.
+  on a branch of this repository (`<issue-number>-<slug>` when an issue tracks it) and reaches `main` by pull request,
+  never by a push. History is linear: pull requests are squash-merged with a conventional title, branches are rebased
+  (never merged) and deleted on merge. Scratch files, local databases and worktrees go in a gitignored `temp/`, never in
+  the tree.
 
 ## Checks
 
@@ -77,7 +78,7 @@ Each item links to the page that defines it. Update that page as items are built
    [model.md: Its shape in the pipeline](docs/reference/model.md#its-shape-in-the-pipeline).
 2. **The engine on the model**: once question 1 is decided. [model.md: Status](docs/reference/model.md#status).
 3. **Verify** (roadmap step 3): every version read through the standard libraries. The libraries are measured against
-   the corpus (`ReaderLibraryTests`). Where they can run is question 5: none targets netstandard2.0 for the generator,
+   the corpus (`ReaderLibraryTests`). Where they can run was question 5, now Q56: none targets netstandard2.0 for the generator,
    BinkyLabs Arazzo has no 1.1, and BinkyLabs Overlays fails the licence rule.
 4. **Flip** (roadmap step 5): a trial end to end on a real service with a frontend. The typed AsyncAPI consumer and
    producer, with NATS as the first broker, are built ([build.md: Messaging](docs/reference/build.md#messaging)).
@@ -87,18 +88,15 @@ Smaller open items are each page's "Planned" rows: `validation.md`, `invariants.
 
 ## Waiting on the maintainer
 
-- **The split.** This folder is laid out as its own repository (see [Its own repository](#its-own-repository)). Its
-  CI, `.github/workflows/ci.yml`, runs only once the folder is a repository's root, so none of its jobs has run on
-  GitHub yet: test, large specs and examples, image, package, and derived evidence. Each has been run locally, and the
-  whole suite passes in a copy of this folder on its own.
-- **Questions 1 to 4** in [docs/QUESTIONS.md](docs/QUESTIONS.md). Each has an assumption in force, so nothing waits.
+- **Questions 1 to 5** in [docs/QUESTIONS.md](docs/QUESTIONS.md). Each has an assumption in force, so nothing waits.
+- **The estate's registration** (rtkelly13/rig#83): branch protection and the required checks on `main`, and the
+  governance files rig applies (AI policy, security policy, community templates). They come from rig; don't write them
+  here.
 
 ## Blocked
 
 These need access or decisions this repository can't give:
 
-- **Its own home** (roadmap step 1): creating `rtkelly-labs/matchmark` and moving this folder there with its history. A
-  session can't create repositories.
 - **The Oxbow forks** of the standard readers (roadmap step 3).
 - **Publishing**: packages, the dotnet tool, and the image to a registry.
 - **The trial**: a real service with a frontend for the flip trial, a broker for AsyncAPI channels, and a sandbox with
@@ -106,7 +104,9 @@ These need access or decisions this repository can't give:
 
 ## Its own repository
 
-This folder is laid out to be a repository's root. Nothing in it refers to files outside it:
+Matchmark lives at [rtkelly-labs/matchmark](https://github.com/rtkelly-labs/matchmark), extracted from Resultful with its
+history (its earlier folders were `prototypes/openapi` and `prototypes/symbolon`). Nothing in it refers to files
+outside it:
 
 - **Build settings.** `Directory.Build.props` and `Directory.Packages.props` hold every setting and version: warnings
   as errors, the analysis level, and central package versions. They import nothing from above.
@@ -114,23 +114,7 @@ This folder is laid out to be a repository's root. Nothing in it refers to files
   `.editorconfig` sets the style, and `LICENSE` is MIT.
 - **Resultful.** It comes from NuGet (`Resultful` 0.2.0-beta05), for the samples and the opt-in adapter's tests. The
   generator and the runtimes don't reference it.
-- **CI.** `.github/workflows/ci.yml` runs from the root, with no paths filter.
+- **CI.** `.github/workflows/ci.yml` runs from the root, with no paths filter, on every push to `main` and every pull
+  request: test (with the large specs and the examples), container image, package consumption, and derived evidence.
 - **The image.** The `Dockerfile` builds with the root as its context (`docker build -t matchmark .`).
-
-To split it out with its history (the maintainer's step):
-
-```bash
-git clone <this repository> matchmark && cd matchmark
-git filter-repo --subdirectory-filter prototypes/matchmark   # or: git subtree split --prefix=prototypes/matchmark
-git remote add origin https://github.com/rtkelly-labs/matchmark.git && git push -u origin main
-```
-
-Then, in the new repository:
-
-- **Branch protection on `main`:** squash merges, linear history, and the CI jobs as required checks.
-- **Package metadata:** `PackageProjectUrl` and `RepositoryUrl` in `Directory.Build.props` already point at
-  `rtkelly-labs/matchmark`.
-- **The "Waiting" and "Blocked" sections above:** remove what the split resolves.
-
-To check the folder stands alone before splitting: copy it somewhere outside this repository, delete `bin` and `obj`,
-and run `dotnet test Matchmark.slnx -c Release`.
+- **Worktrees.** `orca.yaml` is the setup Orca runs in each new worktree: `temp/`, a local `TODO.md`, and a restore.
