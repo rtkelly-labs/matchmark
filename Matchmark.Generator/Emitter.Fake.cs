@@ -239,13 +239,29 @@ namespace Matchmark.Generator
             w.Close();
             w.Line();
             w.Line("/// <summary>The body the fake answers with when a scenario gives none: the spec's example, or a sample.</summary>");
-            w.Open("internal static string? SampleJson(string operation, int status) => (operation, status) switch");
+            // Dispatched on the operation, then on the status. A switch on the pair (operation, status) costs Roslyn's
+            // pattern checks time cubic in its arms: an hour for GitHub's spec (GAPS.md, the large specs' time).
+            w.Open("internal static string? SampleJson(string operation, int status) => operation switch");
             foreach (var operation in operations)
             {
-                foreach (var response in operation.Successes.Concat(operation.Errors).Where(r => r.BodyType is not null && r.SampleJson is not null).OrderBy(r => r.Order))
+                var responses = operation.Successes.Concat(operation.Errors).Where(r => r.BodyType is not null && r.SampleJson is not null).OrderBy(r => r.Order).ToList();
+                if (responses.Count == 0)
                 {
-                    w.Line($"({Naming.Literal(operation.Id)}, {response.Pattern}) => {Naming.Literal(response.SampleJson!)},");
+                    continue;
                 }
+
+                w.Open($"{Naming.Literal(operation.Id)} => status switch");
+                foreach (var response in responses)
+                {
+                    w.Line($"{response.Pattern} => {Naming.Literal(response.SampleJson!)},");
+                }
+
+                if (!responses.Any(r => r.IsDefault))
+                {
+                    w.Line("_ => null,");
+                }
+
+                w.Close(suffix: ",");
             }
 
             w.Line("_ => null,");
@@ -256,13 +272,17 @@ namespace Matchmark.Generator
             w.Line();
             w.Line("/// <summary>The handler's return value for a documented response, built fresh; null for a plain Task.</summary>");
             w.Open("internal static bool TryAnswer(string operation, int status, string? json, out object? answer)");
-            w.Open("switch ((operation, status))");
+            w.Open("switch (operation)");
             foreach (var operation in operations)
             {
-                // The default response answers any status the others don't, so it comes last.
-                foreach (var response in operation.Successes.Concat(operation.Errors).OrderBy(r => r.Order))
+                // On the operation, then the status, as in SampleJson. The default response answers any status the
+                // others don't, so it comes last; without one, an undocumented status answers nothing.
+                var responses = operation.Successes.Concat(operation.Errors).OrderBy(r => r.Order).ToList();
+                w.Line($"case {Naming.Literal(operation.Id)}:");
+                w.Open("switch (status)");
+                foreach (var response in responses)
                 {
-                    w.Line($"case ({Naming.Literal(operation.Id)}, {response.Pattern}):");
+                    w.Line(response.IsDefault ? "default:" : $"case {response.Pattern}:");
                     string? value = null;
                     if (response.BodyType is not null)
                     {
@@ -278,6 +298,15 @@ namespace Matchmark.Generator
                     w.Line(outcome.Length == 0 ? "    answer = null;" : $"    answer = {outcome};");
                     w.Line("    return true;");
                 }
+
+                if (!responses.Any(r => r.IsDefault))
+                {
+                    w.Line("default:");
+                    w.Line("    answer = null;");
+                    w.Line("    return false;");
+                }
+
+                w.Close();
             }
 
             w.Line("default:");

@@ -51,7 +51,7 @@ From the repository root:
 
 | Check | Command | Notes |
 |:--|:--|:--|
-| Everything | `dotnet test Matchmark.slnx -c Release` | Specs 830 (65 skipped), Testing 161, Generator 280 (2 skipped), Sample 121 |
+| Everything | `dotnet test Matchmark.slnx -c Release` | Specs 830 (65 skipped), Testing 161, Generator 281 (2 skipped), Sample 121 |
 | The readers | `dotnet test Matchmark.Specs.Tests -c Release` | Matchmark's own AsyncAPI, Arazzo and Overlay readers against everything vendored in `specs/`: fixtures, official schemas, compliant sets, examples, and mutations compared with the official schemas |
 | Large specs | `sh samples/large/fetch.sh`, then `MATCHMARK_LARGE_SPECS=$PWD/samples/large dotnet test Matchmark.Generator.Tests -c Release --filter LargeSpecTests` | GitHub's and Stripe's specs, fetched and not committed. They must compile with 0 errors; the share generated (98.7%, 99.8%) should only rise |
 | The specifications' examples | part of `dotnet test` (`OfficialExamplesTests`) | Vendored in `specs/` at pinned commits; 57 of 57 |
