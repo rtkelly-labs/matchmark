@@ -54,7 +54,7 @@ From the repository root:
 |:--|:--|:--|
 | Everything | `dotnet test Matchmark.slnx -c Release` | Specs 830 (65 skipped), Testing 161, Generator 280 (2 skipped), Sample 121 |
 | The readers | `dotnet test Matchmark.Specs.Tests -c Release` | Matchmark's own AsyncAPI, Arazzo and Overlay readers against everything vendored in `specs/`: fixtures, official schemas, compliant sets, examples, and mutations compared with the official schemas |
-| Large specs | `sh samples/large/fetch.sh`, then `MATCHMARK_LARGE_SPECS=$PWD/samples/large dotnet test Matchmark.Generator.Tests -c Release --filter LargeSpecTests` | GitHub's and Stripe's specs, fetched and not committed. They must compile with 0 errors; the share generated (98.7%, 99.8%) should only rise |
+| Large specs | `sh samples/large/fetch.sh`, then `MATCHMARK_LARGE_SPECS=$PWD/samples/large dotnet test Matchmark.Generator.Tests -c Release --filter LargeSpecTests` | GitHub's and Stripe's specs, fetched and not committed. They must compile with 0 errors; the share generated (98.7%, 99.8%) should only rise. Over an hour, so CI runs it on `main` and weekly (`large-specs.yml`), not on pull requests |
 | The specifications' examples | part of `dotnet test` (`OfficialExamplesTests`) | Vendored in `specs/` at pinned commits; 57 of 57 |
 | Benchmarks | `dotnet run -c Release --project Matchmark.Benchmarks -- --filter '*'` (add `--job short` for a quick look) | BenchmarkDotNet over reading, normalising, the parse step, a whole generator run, the suite, samples and violations; GitHub and Stripe join when fetched. A performance claim cites these, run before and after ([testing.md](docs/reference/testing.md#benchmarks)) |
 | On a broker | `docker run -d --network host nats:2.10`, then `MATCHMARK_NATS_URL=nats://127.0.0.1:4222 dotnet test Matchmark.Generator.Tests -c Release --filter MessagingTests` | The generated AsyncAPI producer and consumer on NATS; CI runs a NATS service container |
@@ -114,7 +114,9 @@ outside it:
   `.editorconfig` sets the style, and `LICENSE` is MIT.
 - **Resultful.** It comes from NuGet (`Resultful` 0.2.0-beta05), for the samples and the opt-in adapter's tests. The
   generator and the runtimes don't reference it.
-- **CI.** `.github/workflows/ci.yml` runs from the root, with no paths filter, on every push to `main` and every pull
-  request: test (with the large specs and the examples), container image, package consumption, and derived evidence.
+- **CI.** Two workflows run from the root, with no paths filter. `ci.yml` runs on every push to `main` and every pull
+  request: test (with the corpus and the examples), container image, package consumption, and derived evidence.
+  `large-specs.yml` runs GitHub's and Stripe's specs on `main`, weekly and on demand, not on pull requests: it takes
+  over an hour.
 - **The image.** The `Dockerfile` builds with the root as its context (`docker build -t matchmark .`).
 - **Worktrees.** `orca.yaml` is the setup Orca runs in each new worktree: `temp/`, a local `TODO.md`, and a restore.
