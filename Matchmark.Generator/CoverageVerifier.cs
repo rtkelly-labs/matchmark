@@ -305,9 +305,19 @@ namespace Matchmark.Generator
         /// <summary>The status each typed result in Microsoft.AspNetCore.Http.HttpResults declares, as its metadata does.</summary>
         private static readonly Dictionary<string, int> TypedResultStatuses = new(StringComparer.Ordinal)
         {
-            ["Ok"] = 200, ["Created"] = 201, ["CreatedAtRoute"] = 201, ["Accepted"] = 202, ["AcceptedAtRoute"] = 202, ["NoContent"] = 204,
-            ["BadRequest"] = 400, ["UnauthorizedHttpResult"] = 401, ["NotFound"] = 404, ["Conflict"] = 409,
-            ["UnprocessableEntity"] = 422, ["InternalServerError"] = 500, ["ValidationProblem"] = 400,
+            ["Ok"] = 200,
+            ["Created"] = 201,
+            ["CreatedAtRoute"] = 201,
+            ["Accepted"] = 202,
+            ["AcceptedAtRoute"] = 202,
+            ["NoContent"] = 204,
+            ["BadRequest"] = 400,
+            ["UnauthorizedHttpResult"] = 401,
+            ["NotFound"] = 404,
+            ["Conflict"] = 409,
+            ["UnprocessableEntity"] = 422,
+            ["InternalServerError"] = 500,
+            ["ValidationProblem"] = 400,
         };
 
         /// <summary>

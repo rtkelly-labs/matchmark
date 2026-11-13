@@ -27,7 +27,11 @@ public sealed class FakeTests
 
         result.ToOneOf().Value.Should().BeEquivalentTo(new Pet
         {
-            Id = 1, Name = "Rex", Tag = "good-dog", Status = PetStatus.Available, Details = new Dog { GoodBoy = true },
+            Id = 1,
+            Name = "Rex",
+            Tag = "good-dog",
+            Status = PetStatus.Available,
+            Details = new Dog { GoodBoy = true },
         });
     }
 
