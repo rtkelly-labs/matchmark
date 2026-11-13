@@ -36,6 +36,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Verify code formatting
+        run: dotnet format whitespace Matchmark.slnx --verify-no-changes
+
       - name: Test
         env:
           MATCHMARK_NATS_URL: nats://localhost:4222
@@ -103,6 +106,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Verify code formatting
+        run: dotnet format whitespace Matchmark.slnx --verify-no-changes
+
       - name: Pack and consume
         run: eng/consume-package.sh "$RUNNER_TEMP/consume"
 
@@ -123,6 +129,9 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+
+      - name: Verify code formatting
+        run: dotnet format whitespace Matchmark.slnx --verify-no-changes
 
       - name: Derive the head
         env:

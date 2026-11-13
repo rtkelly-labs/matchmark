@@ -90,7 +90,10 @@ public static partial class TrafficDerive
                 var values = list.Where(c => c.Status is >= 200 and < 400).SelectMany(c => c.Query.Where(q => q.Key == name).Select(q => q.Value)).ToList();
                 parameterList.Add(new JsonObject
                 {
-                    ["name"] = name, ["in"] = "query", ["required"] = list.All(c => c.Query.Any(q => q.Key == name)), ["schema"] = Scalar(values),
+                    ["name"] = name,
+                    ["in"] = "query",
+                    ["required"] = list.All(c => c.Query.Any(q => q.Key == name)),
+                    ["schema"] = Scalar(values),
                 });
             }
 

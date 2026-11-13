@@ -149,7 +149,8 @@ public static class Traits
             if (fields.Count > 0)
             {
                 keys.Add(new UniqueKey(fields, key["ignoreCase"]?.GetValue<bool>() == true,
-                    key["scope"]?.GetValue<string>() ?? "collection", key["nulls"]?.GetValue<string>() == "equal") { Declared = DeclaredStatus(key) });
+                    key["scope"]?.GetValue<string>() ?? "collection", key["nulls"]?.GetValue<string>() == "equal")
+                { Declared = DeclaredStatus(key) });
             }
         }
 
@@ -177,7 +178,8 @@ public static class Traits
                 && System.Text.RegularExpressions.Regex.Match(target, @"^(?<collection>.+)/\{[^}]+\}$") is { Success: true } match)
             {
                 references.Add(new Reference(field, target, match.Groups["collection"].Value, reference["onDelete"]?.GetValue<string>() ?? "restrict",
-                    reference["required"]?.GetValue<bool>() != false) { Declared = DeclaredStatus(reference) });
+                    reference["required"]?.GetValue<bool>() != false)
+                { Declared = DeclaredStatus(reference) });
             }
         }
 

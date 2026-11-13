@@ -23,12 +23,18 @@ public sealed class TrafficDeriveTests
             ["response"] = new JsonObject { ["status"] = status, ["content"] = new JsonObject { ["mimeType"] = "application/json; charset=utf-8", ["text"] = answer } },
         };
 
-        var har = new JsonObject { ["log"] = new JsonObject { ["entries"] = new JsonArray(
+        var har = new JsonObject
+        {
+            ["log"] = new JsonObject
+            {
+                ["entries"] = new JsonArray(
             Entry("POST", "https://api.example.com/orders", 201, """{"item":"tea","quantity":2}""", """{"id":1,"item":"tea","quantity":2,"placedAt":"2026-11-10T09:00:00Z"}"""),
             Entry("POST", "https://api.example.com/orders", 201, """{"item":"cake","quantity":1,"note":"no nuts"}""", """{"id":2,"item":"cake","quantity":1,"placedAt":"2026-11-10T09:05:00Z","note":"no nuts"}"""),
             Entry("GET", "https://api.example.com/orders/1?expand=true", 200, null, """{"id":1,"item":"tea","quantity":2,"placedAt":"2026-11-10T09:00:00Z"}"""),
             Entry("GET", "https://api.example.com/orders/abc", 400, null, """{"title":"Bad id"}"""),
-            Entry("GET", "https://api.example.com/orders/99", 404, null, null)) } };
+            Entry("GET", "https://api.example.com/orders/99", 404, null, null))
+            }
+        };
 
         var (spec, review) = TrafficDerive.Derive(TrafficDerive.Har(har.ToJsonString()), "Orders");
 

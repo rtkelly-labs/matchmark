@@ -65,7 +65,8 @@ public sealed class OracleTests
             {
                 using var document = JsonDocument.Parse(new JsonObject { [name] = value?.DeepClone() }.ToJsonString());
                 return compiled.Validate(document.RootElement).IsValid;
-            }));
+            }
+            ));
         }
 
         OpenApiFormats();
