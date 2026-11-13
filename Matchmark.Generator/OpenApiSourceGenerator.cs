@@ -407,7 +407,8 @@ namespace System.Runtime.CompilerServices
             // MatchmarkClientValidation="Net": the client checks requests on .NET's validation layer (question 3).
             var clientOnNet = fileOptions.TryGetValue(MetadataPrefix + "MatchmarkClientValidation", out var clientValidation) && string.Equals(clientValidation, "Net", StringComparison.OrdinalIgnoreCase);
             return new SpecInput(text.Path, content, string.IsNullOrWhiteSpace(ns) ? "Generated" : ns!, apiName!,
-                string.IsNullOrWhiteSpace(parts) ? "Contract,Server" : parts!, audit) { OwnProblems = owned, Resultful = resultful, ClientOnNet = clientOnNet, Outcomes = outcomeStyle };
+                string.IsNullOrWhiteSpace(parts) ? "Contract,Server" : parts!, audit)
+            { OwnProblems = owned, Resultful = resultful, ClientOnNet = clientOnNet, Outcomes = outcomeStyle };
         }
 
         /// <summary>The spec's shape, or null when it can't be read (Generate reports that, with what the reader objected to).</summary>
@@ -566,7 +567,11 @@ namespace System.Runtime.CompilerServices
         public SpecInput Sliced(string json, string tag)
             => new(Path + "." + (tag.Length == 0 ? "untagged" : tag) + ".json", json, Namespace, ApiName, Parts, Audit)
             {
-                OwnProblems = OwnProblems, Resultful = Resultful, ClientOnNet = ClientOnNet, Outcomes = Outcomes, SliceTag = tag,
+                OwnProblems = OwnProblems,
+                Resultful = Resultful,
+                ClientOnNet = ClientOnNet,
+                Outcomes = Outcomes,
+                SliceTag = tag,
             };
 
         /// <summary>The same spec, read from other content (a bundle of its parts).</summary>
