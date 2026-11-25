@@ -41,9 +41,10 @@ the backlog in order, and what's waiting or blocked. The why is in the pages it 
   and Corvus.Json.Validator over JsonSchema.Net, for this reason. Add every package to `Directory.Packages.props` with
   a comment saying why.
 - **Git.** Commit subjects are conventional (`feat: …`, `test: …`, `docs: …`, with an optional scope such as `feat(generator): …`). Work goes
-  on the session's branch, rebased and never merged. Open a pull request only when the maintainer asks. History is linear: pull
-  requests are squash-merged, branches are rebased (never merged) and deleted on merge. Scratch files, local databases
-  and worktrees go in a gitignored `temp/`, never in the tree.
+  on a branch of this repository (`<issue-number>-<slug>` when an issue tracks it) and reaches `main` by pull request,
+  never by a push. History is linear: pull requests are squash-merged with a conventional title, branches are rebased
+  (never merged) and deleted on merge. Scratch files, local databases and worktrees go in a gitignored `temp/`, never in
+  the tree.
 
 ## Checks
 
@@ -53,7 +54,7 @@ From the repository root:
 |:--|:--|:--|
 | Everything | `dotnet test Matchmark.slnx -c Release` | Specs 830 (65 skipped), Testing 161, Generator 280 (2 skipped), Sample 121 |
 | The readers | `dotnet test Matchmark.Specs.Tests -c Release` | Matchmark's own AsyncAPI, Arazzo and Overlay readers against everything vendored in `specs/`: fixtures, official schemas, compliant sets, examples, and mutations compared with the official schemas |
-| Large specs | `sh samples/large/fetch.sh`, then `MATCHMARK_LARGE_SPECS=$PWD/samples/large dotnet test Matchmark.Generator.Tests -c Release --filter LargeSpecTests` | GitHub's and Stripe's specs, fetched and not committed. They must compile with 0 errors; the share generated (98.7%, 99.8%) should only rise |
+| Large specs | `sh samples/large/fetch.sh`, then `MATCHMARK_LARGE_SPECS=$PWD/samples/large dotnet test Matchmark.Generator.Tests -c Release --filter LargeSpecTests` | GitHub's and Stripe's specs, fetched and not committed. They must compile with 0 errors; the share generated (98.7%, 99.8%) should only rise. Over an hour, so CI runs it on `main` and weekly (`large-specs.yml`), not on pull requests |
 | The specifications' examples | part of `dotnet test` (`OfficialExamplesTests`) | Vendored in `specs/` at pinned commits; 57 of 57 |
 | Benchmarks | `dotnet run -c Release --project Matchmark.Benchmarks -- --filter '*'` (add `--job short` for a quick look) | BenchmarkDotNet over reading, normalising, the parse step, a whole generator run, the suite, samples and violations; GitHub and Stripe join when fetched. A performance claim cites these, run before and after ([testing.md](docs/reference/testing.md#benchmarks)) |
 | On a broker | `docker run -d --network host nats:2.10`, then `MATCHMARK_NATS_URL=nats://127.0.0.1:4222 dotnet test Matchmark.Generator.Tests -c Release --filter MessagingTests` | The generated AsyncAPI producer and consumer on NATS; CI runs a NATS service container |
@@ -77,7 +78,7 @@ Each item links to the page that defines it. Update that page as items are built
    [model.md: Its shape in the pipeline](docs/reference/model.md#its-shape-in-the-pipeline).
 2. **The engine on the model**: once question 1 is decided. [model.md: Status](docs/reference/model.md#status).
 3. **Verify** (roadmap step 3): every version read through the standard libraries. The libraries are measured against
-   the corpus (`ReaderLibraryTests`). Where they can run is question 5: none targets netstandard2.0 for the generator,
+   the corpus (`ReaderLibraryTests`). Where they can run was question 5, now Q56: none targets netstandard2.0 for the generator,
    BinkyLabs Arazzo has no 1.1, and BinkyLabs Overlays fails the licence rule.
 4. **Flip** (roadmap step 5): a trial end to end on a real service with a frontend. The typed AsyncAPI consumer and
    producer, with NATS as the first broker, are built ([build.md: Messaging](docs/reference/build.md#messaging)).
@@ -87,18 +88,15 @@ Smaller open items are each page's "Planned" rows: `validation.md`, `invariants.
 
 ## Waiting on the maintainer
 
-- **The split.** This folder is laid out as its own repository (see [Its own repository](#its-own-repository)). Its
-  CI, `.github/workflows/ci.yml`, runs only once the folder is a repository's root, so none of its jobs has run on
-  GitHub yet: test, large specs and examples, image, package, and derived evidence. Each has been run locally, and the
-  whole suite passes in a copy of this folder on its own.
-- **Questions 1 to 4** in [docs/QUESTIONS.md](docs/QUESTIONS.md). Each has an assumption in force, so nothing waits.
+- **Questions 1 to 5** in [docs/QUESTIONS.md](docs/QUESTIONS.md). Each has an assumption in force, so nothing waits.
+- **The estate's registration** (rtkelly13/rig#83): branch protection and the required checks on `main`, and the
+  governance files rig applies (AI policy, security policy, community templates). They come from rig; don't write them
+  here.
 
 ## Blocked
 
 These need access or decisions this repository can't give:
 
-- **Its own home** (roadmap step 1): creating `rtkelly-labs/matchmark` and moving this folder there with its history. A
-  session can't create repositories.
 - **The Oxbow forks** of the standard readers (roadmap step 3).
 - **Publishing**: packages, the dotnet tool, and the image to a registry.
 - **The trial**: a real service with a frontend for the flip trial, a broker for AsyncAPI channels, and a sandbox with
@@ -106,7 +104,9 @@ These need access or decisions this repository can't give:
 
 ## Its own repository
 
-This folder is laid out to be a repository's root. Nothing in it refers to files outside it:
+Matchmark lives at [rtkelly-labs/matchmark](https://github.com/rtkelly-labs/matchmark), extracted from Resultful with its
+history (its earlier folders were `prototypes/openapi` and `prototypes/symbolon`). Nothing in it refers to files
+outside it:
 
 - **Build settings.** `Directory.Build.props` and `Directory.Packages.props` hold every setting and version: warnings
   as errors, the analysis level, and central package versions. They import nothing from above.
@@ -114,23 +114,9 @@ This folder is laid out to be a repository's root. Nothing in it refers to files
   `.editorconfig` sets the style, and `LICENSE` is MIT.
 - **Resultful.** It comes from NuGet (`Resultful` 0.2.0-beta05), for the samples and the opt-in adapter's tests. The
   generator and the runtimes don't reference it.
-- **CI.** `.github/workflows/ci.yml` runs from the root, with no paths filter.
+- **CI.** Two workflows run from the root, with no paths filter. `ci.yml` runs on every push to `main` and every pull
+  request: test (with the corpus and the examples), container image, package consumption, and derived evidence.
+  `large-specs.yml` runs GitHub's and Stripe's specs on `main`, weekly and on demand, not on pull requests: it takes
+  over an hour.
 - **The image.** The `Dockerfile` builds with the root as its context (`docker build -t matchmark .`).
-
-To split it out with its history (the maintainer's step):
-
-```bash
-git clone <this repository> matchmark && cd matchmark
-git filter-repo --subdirectory-filter prototypes/matchmark   # or: git subtree split --prefix=prototypes/matchmark
-git remote add origin https://github.com/rtkelly-labs/matchmark.git && git push -u origin main
-```
-
-Then, in the new repository:
-
-- **Branch protection on `main`:** squash merges, linear history, and the CI jobs as required checks.
-- **Package metadata:** `PackageProjectUrl` and `RepositoryUrl` in `Directory.Build.props` already point at
-  `rtkelly-labs/matchmark`.
-- **The "Waiting" and "Blocked" sections above:** remove what the split resolves.
-
-To check the folder stands alone before splitting: copy it somewhere outside this repository, delete `bin` and `obj`,
-and run `dotnet test Matchmark.slnx -c Release`.
+- **Worktrees.** `orca.yaml` is the setup Orca runs in each new worktree: `temp/`, a local `TODO.md`, and a restore.

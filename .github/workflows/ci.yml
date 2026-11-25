@@ -1,8 +1,7 @@
 name: ci
 
-# Matchmark: its tests, then the large public specs (GitHub's and Stripe's,
-# fetched, not committed), whose share of operations generated is a number that should only rise, and the
-# specifications' own examples at pinned commits (decision Q51), measured the same way.
+# Matchmark: its tests, with the corpus and the specifications' own examples at pinned commits (decision Q51), the
+# image, the package as a consumer gets it, and derived evidence. The large public specs are large-specs.yml.
 on:
   push:
     branches: [ main ]
@@ -20,7 +19,7 @@ concurrency:
 jobs:
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A NATS server, for MessagingTests: the generated AsyncAPI producer and consumer on a real broker.
     services:
       nats:
@@ -41,14 +40,6 @@ jobs:
           MATCHMARK_NATS_URL: nats://localhost:4222
         run: dotnet test Matchmark.slnx --configuration Release
 
-      - name: Fetch the large specs
-        run: sh samples/large/fetch.sh
-
-      - name: Generate and compile the large specs
-        env:
-          MATCHMARK_LARGE_SPECS: ${{ github.workspace }}/samples/large
-        run: dotnet test Matchmark.Generator.Tests --configuration Release --no-build --filter LargeSpecTests
-
       - name: Ledgers
         if: always()
         run: |
@@ -56,10 +47,6 @@ jobs:
             echo '### Corpus'
             echo '```'
             cat Matchmark.Generator.Tests/bin/Release/net10.0/corpus-ledger.txt 2>/dev/null || echo 'no ledger'
-            echo '```'
-            echo '### Large specs'
-            echo '```'
-            cat Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt 2>/dev/null || echo 'not run'
             echo '```'
             echo "### The specifications' own examples"
             echo '```'
@@ -69,7 +56,7 @@ jobs:
 
   image:
     name: container image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -92,7 +79,7 @@ jobs:
   package:
     name: package consumption
     # The generator as a consumer gets it: packed, then referenced by a fresh project outside this repository's build files.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -111,7 +98,7 @@ jobs:
     # Diffra's approach to generated assets: what the generator decides and writes, derived on the pull request and on
     # its merge-base and diffed, never committed. A change to the model or the public surface needs review; a change
     # only in generated bodies is information. A base that can't be derived is reported as unavailable, never a pass.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository

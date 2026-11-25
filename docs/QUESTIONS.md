@@ -2,7 +2,7 @@
 
 What is still open. Each question names the assumption work proceeds on until it's answered, so nothing waits on it.
 When one is answered, its answer moves to [decisions.md](decisions.md) with its date, and it's deleted here. Questions
-answered so far are decisions Q44 to Q56.
+answered so far are decisions Q44 to Q56; Q57 and Q58 were decided without one.
 
 **1. Should the test engine keep working on normalised JSON, or take the standard libraries as dependencies?** Once
 Matchmark reads specs through Microsoft.OpenApi, the AsyncAPI SDK and BinkyLabs (Q28 to Q31), the engine
@@ -56,3 +56,12 @@ edit to one tag's operations regenerates only that file (`IncrementalityTests`, 
 components their tag reaches, so an edit to a component re-emits only the tags that use it). What's left to decide is whether the other per-operation outputs (handlers, client, fake) split the
 same way, which splits their classes into per-tag partials.
 *Assumption until then:* endpoints are per tag; the other outputs are one emission per spec.
+
+**5. Should the scripts become C# file-based apps?** The estate's script policy (rtkelly13/rig) bans `.sh` files, and
+three remain: `eng/consume-package.sh` (CI's package job), `specs/vendor.sh` (re-vendoring the specifications) and
+`samples/large/fetch.sh` (the large-specs workflow and check). Each could be a C# file-based app, run with
+`dotnet run <app>.cs`, so the repository needs only the SDK it already pins.
+*What decides it:* whether the policy applies to this repository as written, and whether `dotnet run app.cs` covers
+what each script relies on (`curl`, `git`, a work directory such as `$RUNNER_TEMP`) as simply, in CI and locally.
+*Assumption until then:* the three scripts stay as they are, and `ci.yml` and the checks in `AGENTS.md` keep calling
+them.

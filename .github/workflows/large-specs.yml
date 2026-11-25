@@ -1,0 +1,61 @@
+name: large specs
+
+# The large public specs (GitHub's and Stripe's, fetched from upstream, not committed): the share of operations
+# generated, a number that should only rise, and that what is generated compiles with no error. Its first run on GitHub
+# took 1h10m for the two specs, against 3m19s for the whole of the rest of the suite; why is open (GAPS.md: the large
+# specs' time). So it isn't a pull request's check: it runs on main, weekly (upstream moves), and on demand. Its own
+# workflow, so that ci.yml's required checks on main never queue behind it.
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer main supersedes a run in progress.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  large:
+    name: large specs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Fetch the large specs
+        run: sh samples/large/fetch.sh
+
+      - name: Generate and compile the large specs
+        env:
+          MATCHMARK_LARGE_SPECS: ${{ github.workspace }}/samples/large
+        # The ledger has a line per spec examined: two, or the run examined nothing and fails.
+        run: |
+          dotnet test Matchmark.Generator.Tests --configuration Release --filter LargeSpecTests --logger 'console;verbosity=detailed'
+          ledger=Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt
+          cat "$ledger"
+          examined=$(wc -l < "$ledger")
+          echo "examined $examined large specs"
+          test "$examined" -eq 2
+
+      - name: Ledger
+        if: always()
+        run: |
+          {
+            echo '### Large specs'
+            echo '```'
+            cat Matchmark.Generator.Tests/bin/Release/net10.0/large-ledger.txt 2>/dev/null || echo 'not run'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
