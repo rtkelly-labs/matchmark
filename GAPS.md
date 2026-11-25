@@ -131,6 +131,23 @@ onto the shape is the model's next step ([model.md](docs/reference/model.md#its-
   source, so a change there reaches Matchmark only through a release. *Status:* open, waiting on a current Resultful
   release, then a version bump in `Directory.Packages.props`.
 - **The large specs' time.** On GitHub, `LargeSpecTests` took 1h10m for GitHub's and Stripe's specs, where the rest of
-  the suite took 3m19s and a whole generator run over GitHub's spec is benchmarked at 2.7 s. Which spec and which phase
-  (generating, or Roslyn compiling and analysing what it writes) is not yet measured; `large-specs.yml` logs each test's
-  duration to find out. *Status:* open. Meanwhile the large specs run on `main` and weekly, not on pull requests.
+  the suite took 3m19s and a whole generator run over GitHub's spec is benchmarked at 2.7 s.
+  - **Cause:** Roslyn binding two methods in the generated fake. `SampleJson` and `TryAnswer` switched on the pair
+    `(operation, status)`, one arm per documented response: 3,119 and 3,724 arms for GitHub, and 1,193 and 1,222 for
+    Stripe. Roslyn's check of such a switch's patterns for redundancy (`DecisionDagBuilder.CheckOrAndAndReachability`)
+    is roughly cubic in its arms: 1,200 arms bind in 113 to 158 s across two runs, against 0.14 s for a switch nested
+    by operation. A trace of that switch expression spends all its CPU there; `TryAnswer`, a switch statement, is shown
+    by timing.
+  - **Measured:** CI's ledger (run 42908829305) timed the compile at 1:31:54 for GitHub and 5:11 for Stripe, beside
+    the profile job. Locally, in Stripe's compile of 3:49, binding the fake took 3:09, nearly all of it in the two
+    methods. GC was about 6% (dotnet-counters), and the
+    20,000-line endpoints method binds in 2 to 5 s.
+  - **The fix** (#4) dispatches on the operation, then the status. Compiling locally, Stripe's code now takes 0:41 and
+    GitHub's 1:13.
+  - **Profiling.** CI's traces had no method names: a trace still running when the testhost exits gets no method
+    rundown. The profile job now bounds its trace (30 seconds by default), and `eng/Hotspots.cs` charges a sample's
+    self time to the method above its `CPU_TIME` frame. Bounded traces gave names locally; the job isn't yet verified
+    on CI.
+
+  *Status:* fixed by #4 once merged. Until then, the large specs run on `main` and on pull requests that touch them,
+  not as a required check.
