@@ -44,7 +44,8 @@ are forward-ported before they reach it.
 
 ## Its shape in the pipeline
 
-**Partly built** (see [Status](#status)): the parse step, Verify on the shape, and the per-tag partition. This is what Parquet.SourceGenerator shows for a generator's model in Roslyn's incremental pipeline. Its
+**Partly built** (see [Status](#status)): the parse step, Verify on the shape, the per-tag partition, and the endpoints
+as a function of a tag's shape. This is what Parquet.SourceGenerator shows for a generator's model in Roslyn's incremental pipeline. Its
 models are `sealed record`s, its collections are `EquatableArray<T>`, and its diagnostics are data
 (`DiagnosticInfo(descriptor, position, arguments)`). No `ISymbol`, `SyntaxNode` or `Location` is held in them. Roslyn
 compares each step's output with the last run, and a step can be skipped only when those outputs compare equal by value.
@@ -67,9 +68,20 @@ slices held every component, so an edit to a component touched every slice, even
   it. The generated code is byte-identical to before for every sample (the derived evidence), and GitHub's and Stripe's
   specs compile as before.
 
-**Next:** the emitters as pure functions of a shape. The endpoint, handler and client emitters still read their slice or
-spec with Microsoft.OpenApi inside their output step. Because their inputs are now partitioned and equatable, that costs
-time only when their part of the spec changed.
+- **The endpoints on the shape.** Each tag's slice is read into a `TagShape` (`TrackingNames.TagShapes`), and its
+  endpoints are emitted from that shape alone (`Emitter.EmitTagEndpoints(TagShape)`, a static function), never from the
+  slice. The shape holds what an endpoint binds, checks and answers: each parameter's identifier, binding, enum or deep
+  read, and bounds as written (`BoundsShape`); the body's type, media type and whether it's required (`BodyShape`); and
+  each outcome (`OutcomeShape`), which makes the decisions the emitter's `Response` now delegates to: case name, result
+  type, factory. An edit the endpoints don't read stops at the shape: a summary, or a property, or a bound on a
+  property, of a component the tag uses re-emits the models but not the tag's endpoints. (A bound on a schema the
+  endpoint reads itself, a parameter's or the body's, is in the shape, and re-emits it.) The whole-spec path (`Map{Api}` with every tag
+  inline) emits from the same shapes, the client and controller scaffold read parameters through `ParameterShape`, and
+  the generated code is byte-identical for every sample (the derived evidence). `EndpointShapeTests` emits from a
+  hand-built shape.
+
+**Next:** the handler and client emitters as pure functions of a shape. They still read the spec with Microsoft.OpenApi
+inside their output step, once per spec.
 
 The shape the model takes:
 
@@ -111,8 +123,8 @@ What it avoids: one parser of several thousand lines. Parquet.SourceGenerator's 
 each. Here the parse is split by element (operation, parameter, outcome, type, trait), as the emitter is split by
 output today, and each piece is tested from small specs.
 
-The move keeps the rule below: one output at a time, every test green. The endpoints go first, since they're already
-per tag, then the handlers and the client, then the components. `IncrementalityTests` gains a case at each step: an
+The move keeps the rule below: one output at a time, every test green. The endpoints went first, since they were already
+per tag; the handlers and the client are next, then the components. `IncrementalityTests` gains a case at each step: an
 edit to a component used by one tag re-emits that tag alone.
 
 ## Rules
@@ -130,9 +142,9 @@ edit to a component used by one tag re-emits that tag alone.
 | Split by output | **Built.** `Emitter.cs` (4,334 lines) is a partial class across a file per output, cut along its own section markers: `Emitter.Schemas`, `.Validation`, `.Operations` (the operation model and how it's read), `.Responses`, `.Handlers`, `.Client`, `.Samples`, `.Fake`, `.Endpoints`, `.OpenApi`, `.Invariants`, `.Scaffold`, `.Model`, with `CodeWriter` on its own. The largest is 863 lines. No output changed. |
 | A read-only view, tested directly | **Built.** `ApiModel.Read(spec)` gives each operation's id, method, path, tag, typed parameters and where they bind from, body (type, media type, required, validated) and outcomes (status, type, success, validation problem), and the diagnostics; `ApiModelTests` pins them from small specs. Writing it found one decision made in only one place: whether a body is required was recorded for text bodies alone, and is now recorded for every body. |
 | The engine on the model | Planned: `Matchmark.Testing` still reads the normalised JSON itself (question 1 in [QUESTIONS](../QUESTIONS.md)). |
-| Outputs as functions of the model | **Partly built** ([its shape](#its-shape-in-the-pipeline)): Verify reads the parsed `ApiShape` alone, and its model comparison is a pure function of the shape. The other outputs still read the emitter's operation objects and Microsoft.OpenApi's schemas within their output step; traits, channels and workflows aren't in the shape yet. |
+| Outputs as functions of the model | **Partly built** ([its shape](#its-shape-in-the-pipeline)): Verify reads the parsed `ApiShape` alone, and its model comparison is a pure function of the shape. Each tag's endpoints are a pure function of its `TagShape`. The other outputs still read the emitter's operation objects and Microsoft.OpenApi's schemas within their output step; traits, channels and workflows aren't in the shape yet. |
 | Names decided once | **Built** for shared bodies: an inline body of a shared response or request body (`components/responses`, `components/requestBodies`) is named after the component (`ServiceUnavailableBody`), not after whichever operation is read first, so the name is the same in the whole spec and in any tag's slice. |
-| Incremental by tag | **Built for endpoints:** each tag's slice of the spec (its operations, every component, overlays applied) cut to the components the tag reaches, is an equatable input, and its endpoints are generated from it alone (`Map{Api}{Tag}`, in `{Api}.Endpoints.{Tag}.g.cs`), so Roslyn reuses the tags an edit didn't touch (`IncrementalityTests`, on the named steps). The other per-operation outputs are on [question 4](../QUESTIONS.md). |
+| Incremental by tag | **Built for endpoints:** each tag's slice of the spec (its operations, every component, overlays applied) cut to the components the tag reaches, is an equatable input, read into its `TagShape`, and its endpoints are generated from that shape alone (`Map{Api}{Tag}`, in `{Api}.Endpoints.{Tag}.g.cs`), so Roslyn reuses the tags an edit didn't touch, and a tag whose slice changed but whose shape didn't (`IncrementalityTests`, on the named steps). The other per-operation outputs are on [question 4](../QUESTIONS.md). |
 
 ## Done when
 

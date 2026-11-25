@@ -7,7 +7,7 @@ committed** (Diffra's approach to generated assets).
 
 | Layer | Proves | Built as |
 |:--|:--|:--|
-| 1. The model | The decisions every output is a function of: names, types, outcomes, support | `ApiModelTests`, from small specs, independent of any output |
+| 1. The model | The decisions every output is a function of: names, types, outcomes, support | `ApiModelTests`, from small specs, independent of any output; `EndpointShapeTests`, an output emitted from a hand-built shape |
 | 2. Incrementality | An edit re-runs only what it touches | `IncrementalityTests`, from Roslyn's step tracking on the named steps (`TrackingNames`) |
 | 3. Diagnostics | Each one fires where it should, and the reference matches the descriptors | the diagnostic tests; `DiagnosticDocsTests` |
 | 4. Generated code is code | It parses, compiles and loads, for every sample and the large specs, with no warning | `GeneratedServer`, the corpus, `LargeSpecTests`, `EmittedCodeTests` |
